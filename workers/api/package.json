@@ -1,0 +1,29 @@
+{
+  "name": "@broke-no-more/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=.env --import tsx src/dev-server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "node --env-file=.env --import tsx src/migrate.ts"
+  },
+  "dependencies": {
+    "@broke-no-more/database": "workspace:*",
+    "@broke-no-more/shared": "workspace:*",
+    "@hono/node-server": "^1.19.6",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.17",
+    "jose": "^6.2.17",
+    "pg": "^8.16.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "tsx": "^4.20.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
