@@ -50,10 +50,13 @@ export function DashboardPage() {
       <Card className="border-dashed">
         <p className="font-medium">{me?.gmailConnected ? "Gmail is connected" : "Gmail is not connected"}</p>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Signing in does not grant inbox access. Mailbox consent is separate, and this version does not search for
-          statements yet.
+          Signing in does not grant inbox access. Mailbox consent is separate. Statement search lives on the calendar
+          and keeps only messages whose subject says they are statements.
         </p>
-        <Link to="/settings/connections" className="mt-3 inline-block text-sm text-moss">
+        <Link to="/calendar" className="mt-3 inline-block text-sm text-moss">
+          Open the calendar
+        </Link>
+        <Link to="/settings/connections" className="mt-3 ml-4 inline-block text-sm text-moss">
           {me?.gmailConnected ? "Review the connection" : "Connect Gmail"}
         </Link>
       </Card>

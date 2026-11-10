@@ -18,6 +18,8 @@ Base path: `/api/v1`. The session owns the user. A `userId` in the body or query
 | GET | `/gmail/connect` | Signed-in user. Starts a separate `gmail.readonly` consent |
 | GET | `/gmail/callback` | Seals the refresh token and returns to settings |
 | POST | `/gmail/disconnect` | Revokes the token and deletes the sealed value |
+| POST | `/gmail/sync` | Signed-in user with Gmail connected. Body `{ "keywords": ["Hong Leong"] }`. Stores statement subjects only |
+| GET | `/calendar?month=2026-11` | Days in that month with a confidence status |
 | GET | `/auth/google` | Direct Google OIDC when Cognito is not configured |
 | GET | `/auth/google/callback` | Sets `bnm_session` and redirects to `/dashboard` |
 | POST | `/auth/dev-login` | Local only. Body `{ "persona": "alex" \| "blair" }` |
@@ -33,6 +35,7 @@ Dev login returns 404 when `ENVIRONMENT` is anything other than `development` or
 - `GET /accounts`
 - `POST /accounts` with `{ type, displayName, institution?, currency, maskedIdentifier? }`
 - `GET /accounts/:id`
+- `PATCH /accounts/:id` with the same body as create
 - `DELETE /accounts/:id` also deletes that account's transactions
 
 Currency is a 3-letter code. Masked identifiers are 4 digits or a mask like `****1234`.
@@ -63,7 +66,7 @@ Create body:
 
 ## Statements and sync jobs
 
-`GET /statements`, `GET /statements/:id`, and `GET /sync-jobs` return only the caller's rows. Phase 0 has no upload or sync trigger.
+`GET /statements`, `GET /statements/:id`, and `GET /sync-jobs` return only the caller's rows. `POST /gmail/sync` searches the connected mailbox for those keywords, then keeps a message only when its subject says it is a statement. The saved row stores the Gmail message id, subject, sender, and Malaysia date. It does not store the body or an attachment. A second scan of the same message does not create another row. Another scan within 15 seconds returns 429.
 
 ## Health
 

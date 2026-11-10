@@ -25,6 +25,16 @@ export {
 } from "./labels";
 export { chartCurrencies, monthlyCashFlow, spendingByType } from "./cash-flow";
 export type { CashFlowRow, MonthlyCashFlow, SpendingSlice } from "./cash-flow";
+export { rollupDayStatus, statusFromScore, CONFIDENCE_STATUSES } from "./confidence";
+export type { ConfidenceStatus } from "./confidence";
+export {
+  messageIsStatement,
+  normalizeStatementKeyword,
+  normalizeStatementKeywords,
+  receivedOnInMalaysia,
+  statementSearchQuery,
+  SUGGESTED_STATEMENT_KEYWORDS,
+} from "./statement-search";
 export { addMoney, formatMinor, minorExponent, MoneyError, parseDecimalToMinor, subtractMoney } from "./money";
 export type { Money } from "./money";
 export {

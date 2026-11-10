@@ -1,20 +1,25 @@
-import { oauthConnections } from "@broke-no-more/database";
-import { and, eq } from "drizzle-orm";
+import { oauthConnections, statements, syncJobs } from "@broke-no-more/database";
+import { normalizeStatementKeywords } from "@broke-no-more/shared";
+import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { z } from "zod";
 import {
   createGmailStart,
   exchangeGmailCode,
   GMAIL_SCOPE,
   openGmailState,
   readGmailAddress,
+  refreshGmailAccessToken,
   revokeGoogleToken,
 } from "../auth/gmail";
 import { decodeEncryptionKey, openSeal, sealString } from "../auth/seal";
+import { scanStatementMessages } from "../gmail/scan";
 import type { AppEnv } from "../env";
 import { gmailConnectConfigured } from "../env";
 import { getEnv } from "../http/context";
 import { clearCookie, GMAIL_COOKIE, readCookie, writeGmailCookie } from "../http/cookies";
 import { appPath } from "../http/origin";
+import { ApiError } from "../http/errors";
 import { requireMutationCsrf, requireUser } from "../middleware/guards";
 
 export const gmailRoutes = new Hono<AppEnv>();
@@ -80,6 +85,94 @@ gmailRoutes.get("/callback", async (c) => {
     return c.redirect(appPath(env, "/settings/connections"));
   } catch {
     return finish("gmail_auth_failed");
+  }
+});
+
+const syncBody = z.object({ keywords: z.array(z.string()).min(1).max(12) });
+
+gmailRoutes.post("/sync", requireMutationCsrf, async (c) => {
+  const env = getEnv(c);
+  const keywords = normalizeStatementKeywords(syncBody.parse(await c.req.json()).keywords);
+  if (keywords.length === 0) throw new ApiError(400, "validation_error", "Add at least one plain keyword.");
+  const db = env.db;
+  const userId = c.get("userId");
+  const key = decodeEncryptionKey(env.TOKEN_ENCRYPTION_KEY);
+  const connectionRows = await db
+    .select()
+    .from(oauthConnections)
+    .where(and(eq(oauthConnections.userId, userId), eq(oauthConnections.provider, "gmail"), eq(oauthConnections.status, "connected")))
+    .limit(1);
+  const connection = connectionRows[0];
+  if (!connection?.encryptedRefreshToken || !key) {
+    throw new ApiError(409, "gmail_not_connected", "Connect Gmail before scanning for statements.");
+  }
+
+  const recent = await db
+    .select({ startedAt: syncJobs.startedAt, status: syncJobs.status })
+    .from(syncJobs)
+    .where(and(eq(syncJobs.userId, userId), eq(syncJobs.kind, "gmail_statement_scan")))
+    .orderBy(desc(syncJobs.startedAt))
+    .limit(1);
+  const startedAt = recent[0]?.startedAt ? Date.parse(recent[0].startedAt) : Number.NaN;
+  if ((recent[0]?.status === "running" || recent[0]?.status === "succeeded") && Date.now() - startedAt < 15_000) {
+    throw new ApiError(429, "sync_too_soon", "Wait a few seconds before scanning again.");
+  }
+
+  const now = new Date().toISOString();
+  const jobId = crypto.randomUUID();
+  await db.insert(syncJobs).values({
+    id: jobId,
+    userId,
+    kind: "gmail_statement_scan",
+    status: "running",
+    retryCount: 0,
+    startedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  try {
+    const refreshToken = await openSeal(key, connection.encryptedRefreshToken);
+    const accessToken = await refreshGmailAccessToken(env, refreshToken);
+    const scan = await scanStatementMessages(accessToken, keywords);
+    let saved = 0;
+    for (const found of scan.discovered) {
+      const existing = await db
+        .select({ id: statements.id })
+        .from(statements)
+        .where(and(eq(statements.userId, userId), eq(statements.gmailMessageId, found.gmailMessageId)))
+        .limit(1);
+      if (existing[0]) continue;
+      const savedAt = new Date().toISOString();
+      await db.insert(statements).values({
+        id: crypto.randomUUID(),
+        userId,
+        source: "GMAIL",
+        status: "DISCOVERED",
+        checksum: `gmail:${found.gmailMessageId}`,
+        gmailMessageId: found.gmailMessageId,
+        subject: found.subject,
+        sender: found.sender,
+        receivedOn: found.receivedOn,
+        matchedKeywords: found.matchedKeywords.join(", "),
+        createdAt: savedAt,
+        updatedAt: savedAt,
+      });
+      saved += 1;
+    }
+    const finishedAt = new Date().toISOString();
+    await db
+      .update(syncJobs)
+      .set({ status: "succeeded", finishedAt, updatedAt: finishedAt, checkpoint: String(scan.inspected) })
+      .where(eq(syncJobs.id, jobId));
+    return c.json({ inspected: scan.inspected, saved, alreadyKnown: scan.discovered.length - saved });
+  } catch {
+    const finishedAt = new Date().toISOString();
+    await db
+      .update(syncJobs)
+      .set({ status: "failed", errorCode: "gmail_sync_failed", finishedAt, updatedAt: finishedAt })
+      .where(eq(syncJobs.id, jobId));
+    throw new ApiError(502, "gmail_sync_failed", "Gmail could not be scanned. Try again in a moment.");
   }
 });
 

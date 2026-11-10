@@ -94,12 +94,18 @@ export const statements = pgTable(
     periodStart: text("period_start"),
     periodEnd: text("period_end"),
     errorCode: text("error_code"),
+    gmailMessageId: text("gmail_message_id"),
+    subject: text("subject"),
+    sender: text("sender"),
+    receivedOn: text("received_on"),
+    matchedKeywords: text("matched_keywords"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     index("statements_user_id_idx").on(table.userId),
     uniqueIndex("statements_user_checksum_unique").on(table.userId, table.checksum),
+    uniqueIndex("statements_user_gmail_message_unique").on(table.userId, table.gmailMessageId),
   ],
 );
 

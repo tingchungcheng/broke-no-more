@@ -9,20 +9,20 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readSignedValue } from "../src/auth/crypto";
-import { decodeEncryptionKey, openSeal } from "../src/auth/seal";
+import { decodeEncryptionKey, openSeal, sealString } from "../src/auth/seal";
 import type { OauthState } from "../src/auth/google";
 import { app } from "../src/app";
 import type { Database } from "../src/db";
 import type { Env } from "../src/env";
 
-const migration = readFileSync(
-  resolve(dirname(fileURLToPath(import.meta.url)), "../../../packages/database/migrations/0001_phase0.sql"),
-  "utf8",
-);
+const migrationsDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "../../../packages/database/migrations");
+const migration = readFileSync(resolve(migrationsDirectory, "0001_phase0.sql"), "utf8");
+const statementDiscovery = readFileSync(resolve(migrationsDirectory, "0002_statement_discovery.sql"), "utf8");
 
 async function testEnv(overrides: Partial<Env> = {}): Promise<Env> {
   const client = new PGlite();
   await client.exec(migration);
+  await client.exec(statementDiscovery);
   const db = drizzle(client, { schema }) as unknown as Database;
   return {
     db,
@@ -217,6 +217,32 @@ describe("phase 0 API", () => {
       env,
     );
     expect(incomeOut.status).toBe(400);
+
+    const updated = await app.request(
+      `/api/v1/accounts/${account.id}`,
+      {
+        method: "PATCH",
+        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+        body: JSON.stringify({
+          type: "SAVINGS_ACCOUNT",
+          displayName: "Cash jar",
+          institution: "Maybank",
+          currency: "MYR",
+          maskedIdentifier: "4321",
+        }),
+      },
+      env,
+    );
+    expect(updated.status).toBe(200);
+    await expect(updated.json()).resolves.toMatchObject({
+      account: {
+        id: account.id,
+        type: "SAVINGS_ACCOUNT",
+        displayName: "Cash jar",
+        institution: "Maybank",
+        maskedIdentifier: "4321",
+      },
+    });
   });
 
   it("isolates accounts, transactions, statements, and sync jobs by user", async () => {
@@ -488,5 +514,137 @@ describe("phase 0 API", () => {
     const after = await env.db.select().from(schema.oauthConnections);
     expect(after[0]?.status).toBe("disconnected");
     expect(after[0]?.encryptedRefreshToken).toBeNull();
+  });
+
+  it("scans Gmail for statement subjects that match the chosen keywords", async () => {
+    const encryptionKey = btoa("0123456789abcdef0123456789abcdef");
+    const env = await testEnv({
+      GOOGLE_CLIENT_ID: "gmail-client",
+      GOOGLE_CLIENT_SECRET: "gmail-secret",
+      TOKEN_ENCRYPTION_KEY: encryptionKey,
+    });
+    const session = await devLogin(env, "alex");
+    const blair = await devLogin(env, "blair");
+    const key = decodeEncryptionKey(encryptionKey);
+    expect(key).not.toBeNull();
+    const now = new Date().toISOString();
+    await env.db.insert(schema.oauthConnections).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      provider: "gmail",
+      status: "connected",
+      scopes: "https://www.googleapis.com/auth/gmail.readonly",
+      encryptedRefreshToken: await sealString(key ?? new Uint8Array(), "refresh-secret"),
+      encryptionKeyVersion: "v1",
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const seenQueries: string[] = [];
+    vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.startsWith("https://oauth2.googleapis.com/token")) {
+        return Response.json({ access_token: "access-secret" });
+      }
+      if (url.startsWith("https://gmail.googleapis.com/gmail/v1/users/me/messages?")) {
+        seenQueries.push(new URL(url).searchParams.get("q") ?? "");
+        return Response.json({
+          messages: [{ id: "statement-message" }, { id: "promo-message" }],
+        });
+      }
+      if (url.includes("/messages/statement-message")) {
+        return Response.json({
+          id: "statement-message",
+          internalDate: String(Date.UTC(2026, 10, 10, 2, 0)),
+          payload: {
+            headers: [
+              { name: "Subject", value: "Your Hong Leong e-Statement for October" },
+              { name: "From", value: "Hong Leong <notices@example.com>" },
+            ],
+          },
+        });
+      }
+      if (url.includes("/messages/promo-message")) {
+        return Response.json({
+          id: "promo-message",
+          internalDate: String(Date.UTC(2026, 10, 10, 3, 0)),
+          payload: {
+            headers: [
+              { name: "Subject", value: "Hong Leong exclusive promo" },
+              { name: "From", value: "Hong Leong <news@example.com>" },
+            ],
+          },
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+
+    const sync = await app.request(
+      "/api/v1/gmail/sync",
+      {
+        method: "POST",
+        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+        body: JSON.stringify({ keywords: ["Hong Leong", "subject:bank"] }),
+      },
+      env,
+    );
+    expect(sync.status).toBe(200);
+    await expect(sync.json()).resolves.toEqual({ inspected: 2, saved: 1, alreadyKnown: 0 });
+    expect(seenQueries[0]).toContain("subject:statement");
+    expect(seenQueries[0]).toContain('"Hong Leong"');
+    expect(seenQueries[0]).not.toContain("subject:bank");
+
+    const stored = await env.db.select().from(schema.statements);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      userId: session.user.id,
+      source: "GMAIL",
+      status: "DISCOVERED",
+      gmailMessageId: "statement-message",
+      receivedOn: "2026-11-10",
+    });
+    expect(stored[0]?.subject).toBe("Your Hong Leong e-Statement for October");
+    expect(JSON.stringify(stored)).not.toContain("access-secret");
+    expect(JSON.stringify(stored)).not.toContain("refresh-secret");
+
+    const tooSoon = await app.request(
+      "/api/v1/gmail/sync",
+      {
+        method: "POST",
+        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+        body: JSON.stringify({ keywords: ["Hong Leong"] }),
+      },
+      env,
+    );
+    expect(tooSoon.status).toBe(429);
+
+    await env.db.execute(sql`update sync_jobs set started_at = '2020-01-01T00:00:00.000Z'`);
+    const again = await app.request(
+      "/api/v1/gmail/sync",
+      {
+        method: "POST",
+        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+        body: JSON.stringify({ keywords: ["Hong Leong"] }),
+      },
+      env,
+    );
+    expect(again.status).toBe(200);
+    await expect(again.json()).resolves.toMatchObject({ saved: 0, alreadyKnown: 1 });
+
+    const blairStatements = await app.request("/api/v1/statements", { headers: authed(blair.cookie) }, env);
+    await expect(blairStatements.json()).resolves.toEqual({ statements: [], truncated: false });
+    const alexStatements = await app.request("/api/v1/statements", { headers: authed(session.cookie) }, env);
+    const listed = (await alexStatements.json()) as { statements: { subject: string; matchedKeywords: string[] }[] };
+    expect(listed.statements[0]).toMatchObject({
+      subject: "Your Hong Leong e-Statement for October",
+      matchedKeywords: ["Hong Leong"],
+    });
+
+    const calendar = await app.request("/api/v1/calendar?month=2026-11", { headers: authed(session.cookie) }, env);
+    await expect(calendar.json()).resolves.toMatchObject({
+      month: "2026-11",
+      days: [{ date: "2026-11-10", status: "needs_review" }],
+    });
   });
 });

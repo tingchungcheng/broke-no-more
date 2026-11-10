@@ -8,6 +8,7 @@ const links = [
   { to: "/dashboard", label: "Overview" },
   { to: "/accounts", label: "Accounts" },
   { to: "/transactions", label: "Transactions" },
+  { to: "/calendar", label: "Calendar" },
   { to: "/statements", label: "Statements" },
   { to: "/settings", label: "Settings" },
 ];

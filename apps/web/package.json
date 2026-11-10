@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 5173 --host 127.0.0.1",
+    "dev": "vite --port 5173 --host localhost",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
-    "preview": "vite preview --port 5173 --host 127.0.0.1"
+    "preview": "vite preview --port 5173 --host localhost"
   },
   "dependencies": {
     "@broke-no-more/shared": "workspace:*",

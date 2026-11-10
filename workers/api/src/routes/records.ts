@@ -17,9 +17,38 @@ const statementSchema = z.object({
   periodStart: z.string().nullable(),
   periodEnd: z.string().nullable(),
   errorCode: z.string().nullable(),
+  subject: z.string().nullable(),
+  sender: z.string().nullable(),
+  receivedOn: z.string().nullable(),
+  matchedKeywords: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+
+function presentStatement(row: {
+  id: string;
+  accountId: string | null;
+  source: string;
+  status: string;
+  originalFilename: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  errorCode: string | null;
+  subject: string | null;
+  sender: string | null;
+  receivedOn: string | null;
+  matchedKeywords: string | null;
+  createdAt: string;
+  updatedAt: string;
+}) {
+  return statementSchema.parse({
+    ...row,
+    matchedKeywords: (row.matchedKeywords ?? "")
+      .split(",")
+      .map((keyword) => keyword.trim())
+      .filter(Boolean),
+  });
+}
 
 const syncJobSchema = z.object({
   id: z.string().uuid(),
@@ -38,7 +67,7 @@ statementRoutes.use("*", requireUser, requireMutationCsrf);
 statementRoutes.get("/", async (c) => {
   const rows = await listStatements(getEnv(c).db, c.get("userId"));
   return c.json({
-    statements: rows.slice(0, 100).map((row) => statementSchema.parse(row)),
+    statements: rows.slice(0, 100).map((row) => presentStatement(row)),
     truncated: rows.length > 100,
   });
 });
@@ -46,7 +75,7 @@ statementRoutes.get("/", async (c) => {
 statementRoutes.get("/:id", async (c) => {
   const row = await findStatement(getEnv(c).db, c.get("userId"), requireUuid(c.req.param("id")));
   if (!row) throw new ApiError(404, "statement_not_found", "Statement not found.");
-  return c.json({ statement: statementSchema.parse(row) });
+  return c.json({ statement: presentStatement(row) });
 });
 
 export const syncJobRoutes = new Hono<AppEnv>();

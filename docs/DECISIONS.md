@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-11-10 — Statement scan is keyword search, not a sender list
+
+Context: the mailbox can be connected, and there is still no verified list of bank sender addresses. The calendar needs evidence of statement mail without treating every bank mention as a statement.
+
+Decision: the user presses keyword chips, including names such as RYT, Hong Leong, and Moomoo, or types another short phrase. The Gmail query always requires statement language in the subject. A message is saved only when the subject itself says it is a statement, matches a selected keyword in the subject or from line, and is not a promotion or one-time code. The same Gmail message id is never stored twice. The confidence calendar paints a saved statement as needs review. A manual record with no score stays unverified. A conflict overrides any score. This version does not parse files, so it does not assign a high-confidence score.
+
+Consequences: scanning finds statement emails the user asked for. It does not import transactions or calculate net worth.
+
 ## 2026-11-10 — Gmail consent is separate and does not search mail yet
 
 Context: sign-in must not grant inbox access, and no verified bank-sender list exists.

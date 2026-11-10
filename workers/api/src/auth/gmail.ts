@@ -83,6 +83,24 @@ export async function readGmailAddress(accessToken: string): Promise<string> {
   return payload.emailAddress;
 }
 
+export async function refreshGmailAccessToken(env: Env, refreshToken: string): Promise<string> {
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: env.GOOGLE_CLIENT_ID ?? "",
+      client_secret: env.GOOGLE_CLIENT_SECRET ?? "",
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as { access_token?: unknown } | null;
+  if (!response.ok || !payload || typeof payload.access_token !== "string" || payload.access_token.length === 0) {
+    throw new Error("Gmail access token refresh failed.");
+  }
+  return payload.access_token;
+}
+
 export async function revokeGoogleToken(token: string): Promise<void> {
   await fetch("https://oauth2.googleapis.com/revoke", {
     method: "POST",

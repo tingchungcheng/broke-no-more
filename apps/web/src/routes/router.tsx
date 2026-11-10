@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
 import { AppShell } from "@/components/app-shell";
 import { LoginPage, loadAuthConfig } from "@/features/auth/login-page";
 import { AccountsPage } from "@/features/accounts/accounts-page";
+import { CalendarPage } from "@/features/calendar/calendar-page";
 import { DashboardPage } from "@/features/dashboard/dashboard-page";
 import { OnboardingPage } from "@/features/onboarding/onboarding-page";
 import { SettingsPage } from "@/features/settings/settings-page";
@@ -76,6 +77,7 @@ export function AppRouter() {
         <Route path="/onboarding/accounts" element={<Navigate to="/accounts" replace />} />
         <Route path="/accounts" element={<AccountsPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/quick-add" element={<Navigate to="/transactions" replace />} />
         <Route path="/statements" element={<StatementsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
