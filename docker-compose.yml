@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: broke
+      POSTGRES_PASSWORD: broke
+      POSTGRES_DB: broke_no_more
+    ports:
+      - "5432:5432"
+    volumes:
+      - broke_pg:/var/lib/postgresql/data
+
+volumes:
+  broke_pg:

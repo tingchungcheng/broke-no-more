@@ -1,0 +1,16 @@
+{
+  "name": "broke-no-more",
+  "private": true,
+  "scripts": {
+    "dev": "corepack pnpm --parallel --filter @broke-no-more/api --filter @broke-no-more/web dev",
+    "build": "corepack pnpm --filter @broke-no-more/web build",
+    "typecheck": "corepack pnpm -r --if-present typecheck",
+    "test": "corepack pnpm -r --if-present test",
+    "db:up": "docker compose up -d",
+    "db:migrate": "corepack pnpm --filter @broke-no-more/api db:migrate"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.22.0"
+}
