@@ -5,7 +5,7 @@ import type { AppEnv } from "../env";
 import { getEnv } from "../http/context";
 import { ApiError } from "../http/errors";
 import { readCookie, SESSION_COOKIE } from "../http/cookies";
-import { publicOrigin } from "../http/origin";
+import { isAllowedBrowserOrigin } from "../http/origin";
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -17,8 +17,7 @@ export const requireAppHeader: MiddlewareHandler<AppEnv> = async (c, next) => {
 };
 
 export const requireAllowedOrigin: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const origin = c.req.header("origin");
-  if (origin && origin !== publicOrigin(getEnv(c))) {
+  if (!isAllowedBrowserOrigin(getEnv(c), c.req.header("origin"))) {
     throw new ApiError(403, "forbidden_origin", "Origin is not allowed.");
   }
   await next();

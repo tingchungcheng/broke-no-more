@@ -120,6 +120,37 @@ describe("phase 0 API", () => {
     expect(headerless.status).toBe(403);
   });
 
+  it("accepts localhost and 127.0.0.1 as the same dev origin", async () => {
+    const env = await testEnv();
+    const response = await app.request(
+      "/api/v1/auth/dev-login",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-broke-no-more": "1",
+          origin: "http://127.0.0.1:5173",
+        },
+        body: JSON.stringify({ persona: "alex" }),
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+
+    const production = await testEnv({
+      ENVIRONMENT: "production",
+      PUBLIC_APP_URL: "https://ledger.example.com",
+      SESSION_SECRET: "production-session-secret-must-be-32chars",
+      DEV_AUTH_ENABLED: "false",
+    });
+    const rejected = await app.request(
+      "/api/v1/auth/config",
+      { headers: { origin: "https://127.0.0.1" } },
+      production,
+    );
+    expect(rejected.status).toBe(403);
+  });
+
   it("hides dev sign-in outside development and test", async () => {
     const env = await testEnv({ ENVIRONMENT: "production", PUBLIC_APP_URL: "https://ledger.example.com", DEV_AUTH_ENABLED: "true" });
     const response = await app.request(

@@ -49,9 +49,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await meQuery.refetch();
       },
       signOut: async () => {
-        await callApi("/auth/logout", { method: "POST" });
-        queryClient.clear();
-        queryClient.setQueryData(["me"], null);
+        try {
+          await callApi("/auth/logout", { method: "POST" });
+        } catch (error) {
+          if (!(error instanceof ApiClientError) || error.status !== 401) throw error;
+        } finally {
+          // Keep the "me" query mounted and write null into it. clear() removes the query the
+          // page is watching, and the signed-in screen stays up after the cookie is gone.
+          queryClient.setQueryData(["me"], null);
+          queryClient.removeQueries({
+            predicate: (query) => {
+              const head = query.queryKey[0];
+              return head !== "me" && head !== "auth-config";
+            },
+          });
+        }
       },
     }),
     [callApi, meQuery, queryClient],

@@ -7,7 +7,7 @@ Phase 0 controls:
 - The session id in `bnm_session` is random. The database stores its SHA-256 hash. The cookie is HttpOnly, `SameSite=Lax`, and `Secure` outside development and test.
 - OAuth `state`, PKCE, and `nonce` live in a short-lived signed HttpOnly cookie. A callback with a bad or missing state does not call Google.
 - Changes require `X-Broke-No-More: 1`. Authenticated changes also require the csrf token stored on the session.
-- If an `Origin` header is present, it must match `PUBLIC_APP_URL`.
+- If an `Origin` header is present, it must match `PUBLIC_APP_URL`. Development and test also accept the localhost / 127.0.0.1 pair for that URL.
 - Queries use the session user id. A body `userId` is rejected. Another user's account, transaction, statement, or sync job returns 404.
 - Full card numbers are rejected. Pictures are kept only when they are `https`.
 - Dev personas (`dev:alex`, `dev:blair`) exist only when `ENVIRONMENT` is `development` or `test` and `DEV_AUTH_ENABLED=true`. Any other environment is treated as production and returns 404 for dev sign-in even if the flag is true. The local session secret is refused in production.

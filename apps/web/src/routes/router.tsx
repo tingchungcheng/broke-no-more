@@ -51,7 +51,7 @@ function LoginRoute() {
             await refresh();
           })
           .catch((caught: unknown) => {
-            setError(caught instanceof ApiClientError ? caught.code : "google_auth_failed");
+            setError(caught instanceof ApiClientError ? caught.code : "sign_in_failed");
             setPending(false);
           });
       }}

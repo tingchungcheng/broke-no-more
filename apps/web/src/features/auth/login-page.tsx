@@ -3,7 +3,9 @@ import { api } from "@/lib/api";
 const loginErrors: Record<string, string> = {
   google_not_configured: "Google sign-in is not configured for this environment.",
   google_auth_failed: "Google sign-in did not finish. Try again.",
+  sign_in_failed: "Sign-in did not finish. Try again.",
   access_denied: "Google sign-in was cancelled.",
+  forbidden_origin: "This address cannot sign in. Open the app at http://localhost:5173.",
 };
 
 export function LoginPage({
