@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-11-10 — Reading a statement uses a saved password and a supported table
+
+Context: a scan stores the email, and many statement PDFs are locked with a password the bank already gave the account holder. There is still no verified layout for a named bank.
+
+Decision: the user saves a password and an account against a keyword. The password is sealed and is not returned to the browser. Read downloads the PDF or CSV, tries that password only for a keyword on the statement, and seals the file on disk. Transactions are inserted, linked to that statement, and left in review only when the file is a CSV with date, description, and amount columns or a text line in the supported shape. Any other layout is stored and marked unrecognized. No bank format is guessed.
+
+Consequences: a locked file waits until the password is saved. An opened but unrecognized file does not create ledger rows.
+
 ## 2026-11-10 — Statement scan is keyword search, not a sender list
 
 Context: the mailbox can be connected, and there is still no verified list of bank sender addresses. The calendar needs evidence of statement mail without treating every bank mention as a statement.

@@ -27,14 +27,20 @@ export { chartCurrencies, monthlyCashFlow, spendingByType } from "./cash-flow";
 export type { CashFlowRow, MonthlyCashFlow, SpendingSlice } from "./cash-flow";
 export { rollupDayStatus, statusFromScore, CONFIDENCE_STATUSES } from "./confidence";
 export type { ConfidenceStatus } from "./confidence";
+export { parseStatementDate, parseStatementText } from "./statement-parse";
+export type { ParsedStatement, ParsedStatementTransaction } from "./statement-parse";
 export {
   messageIsStatement,
   normalizeStatementKeyword,
   normalizeStatementKeywords,
   receivedOnInMalaysia,
+  monthDateBounds,
+  receivedOnWithinRange,
   statementSearchQuery,
+  validateStatementScanRange,
   SUGGESTED_STATEMENT_KEYWORDS,
 } from "./statement-search";
+export type { StatementScanRange } from "./statement-search";
 export { addMoney, formatMinor, minorExponent, MoneyError, parseDecimalToMinor, subtractMoney } from "./money";
 export type { Money } from "./money";
 export {

@@ -14,6 +14,7 @@ export type EnvConfig = {
   COGNITO_CLIENT_SECRET?: string;
   COGNITO_DOMAIN?: string;
   TOKEN_ENCRYPTION_KEY?: string;
+  STATEMENT_STORAGE_DIR?: string;
 };
 
 export type Env = EnvConfig & {
@@ -45,6 +46,7 @@ export function readConfig(source: NodeJS.ProcessEnv | EnvConfig): EnvConfig {
     COGNITO_CLIENT_SECRET: source.COGNITO_CLIENT_SECRET,
     COGNITO_DOMAIN: source.COGNITO_DOMAIN,
     TOKEN_ENCRYPTION_KEY: source.TOKEN_ENCRYPTION_KEY,
+    STATEMENT_STORAGE_DIR: source.STATEMENT_STORAGE_DIR,
   };
 }
 

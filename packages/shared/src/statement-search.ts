@@ -40,9 +40,54 @@ export function normalizeStatementKeywords(values: string[]): string[] {
   return keywords;
 }
 
-export function statementSearchQuery(keywords: string[]): string {
+export type StatementScanRange = {
+  fromDate: string;
+  toDate: string;
+};
+
+const MAX_SCAN_DAYS = 366;
+
+export function monthDateBounds(month: string): StatementScanRange {
+  const match = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!match) throw new Error("Month must be YYYY-MM.");
+  const year = Number(match[1]);
+  const monthNumber = Number(match[2]);
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const monthText = String(monthNumber).padStart(2, "0");
+  return {
+    fromDate: `${year}-${monthText}-01`,
+    toDate: `${year}-${monthText}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+export function validateStatementScanRange(fromDate: string, toDate: string): StatementScanRange {
+  if (fromDate > toDate) throw new Error("The start date must be on or before the end date.");
+  const start = Date.parse(`${fromDate}T12:00:00Z`);
+  const end = Date.parse(`${toDate}T12:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) throw new Error("Use YYYY-MM-DD dates.");
+  const spanDays = Math.floor((end - start) / 86_400_000) + 1;
+  if (spanDays > MAX_SCAN_DAYS) throw new Error(`Choose a range of ${MAX_SCAN_DAYS} days or fewer.`);
+  return { fromDate, toDate };
+}
+
+function gmailAfterDate(isoDate: string): string {
+  return isoDate.replaceAll("-", "/");
+}
+
+function gmailBeforeExclusive(isoDate: string): string {
+  const [yearText, monthText, dayText] = isoDate.split("-");
+  const next = new Date(Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText) + 1));
+  return `${next.getUTCFullYear()}/${String(next.getUTCMonth() + 1).padStart(2, "0")}/${String(next.getUTCDate()).padStart(2, "0")}`;
+}
+
+export function statementSearchQuery(keywords: string[], range: StatementScanRange): string {
   const phrases = keywords.map((keyword) => `"${keyword}"`).join(" OR ");
-  return `(subject:statement OR subject:e-statement OR subject:estatement OR subject:e-stmt) (${phrases})`;
+  const bounded = validateStatementScanRange(range.fromDate, range.toDate);
+  return `(subject:statement OR subject:e-statement OR subject:estatement OR subject:e-stmt) (${phrases}) after:${gmailAfterDate(bounded.fromDate)} before:${gmailBeforeExclusive(bounded.toDate)}`;
+}
+
+export function receivedOnWithinRange(receivedOn: string, range: StatementScanRange): boolean {
+  return receivedOn >= range.fromDate && receivedOn <= range.toDate;
 }
 
 function containsPhrase(haystack: string, phrase: string): boolean {

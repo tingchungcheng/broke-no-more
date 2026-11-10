@@ -3,6 +3,7 @@ export {
   categories,
   oauthConnections,
   sessions,
+  statementPasswords,
   statements,
   syncJobs,
   transactions,

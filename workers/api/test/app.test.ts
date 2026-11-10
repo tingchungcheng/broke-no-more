@@ -4,8 +4,9 @@ import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readSignedValue } from "../src/auth/crypto";
@@ -18,11 +19,13 @@ import type { Env } from "../src/env";
 const migrationsDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "../../../packages/database/migrations");
 const migration = readFileSync(resolve(migrationsDirectory, "0001_phase0.sql"), "utf8");
 const statementDiscovery = readFileSync(resolve(migrationsDirectory, "0002_statement_discovery.sql"), "utf8");
+const statementPasswordsMigration = readFileSync(resolve(migrationsDirectory, "0003_statement_passwords.sql"), "utf8");
 
 async function testEnv(overrides: Partial<Env> = {}): Promise<Env> {
   const client = new PGlite();
   await client.exec(migration);
   await client.exec(statementDiscovery);
+  await client.exec(statementPasswordsMigration);
   const db = drizzle(client, { schema }) as unknown as Database;
   return {
     db,
@@ -320,7 +323,14 @@ describe("phase 0 API", () => {
     `);
 
     const blairStatements = await app.request("/api/v1/statements", { headers: authed(blair.cookie) }, env);
-    await expect(blairStatements.json()).resolves.toEqual({ statements: [], truncated: false });
+    await expect(blairStatements.json()).resolves.toMatchObject({
+      statements: [],
+      page: 1,
+      pageSize: 10,
+      total: 0,
+      pageCount: 0,
+      hasMore: false,
+    });
     expect((await app.request(`/api/v1/statements/${statementId}`, { headers: authed(blair.cookie) }, env)).status).toBe(404);
     const alexStatements = await app.request("/api/v1/statements", { headers: authed(alex.cookie) }, env);
     const alexBody = (await alexStatements.json()) as { statements: { id: string }[] };
@@ -585,7 +595,7 @@ describe("phase 0 API", () => {
       {
         method: "POST",
         headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ keywords: ["Hong Leong", "subject:bank"] }),
+        body: JSON.stringify({ keywords: ["Hong Leong", "subject:bank"], fromDate: "2026-11-01", toDate: "2026-11-30" }),
       },
       env,
     );
@@ -594,6 +604,8 @@ describe("phase 0 API", () => {
     expect(seenQueries[0]).toContain("subject:statement");
     expect(seenQueries[0]).toContain('"Hong Leong"');
     expect(seenQueries[0]).not.toContain("subject:bank");
+    expect(seenQueries[0]).toContain("after:2026/11/01");
+    expect(seenQueries[0]).toContain("before:2026/12/01");
 
     const stored = await env.db.select().from(schema.statements);
     expect(stored).toHaveLength(1);
@@ -613,7 +625,7 @@ describe("phase 0 API", () => {
       {
         method: "POST",
         headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ keywords: ["Hong Leong"] }),
+        body: JSON.stringify({ keywords: ["Hong Leong"], fromDate: "2026-11-01", toDate: "2026-11-30" }),
       },
       env,
     );
@@ -625,7 +637,7 @@ describe("phase 0 API", () => {
       {
         method: "POST",
         headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ keywords: ["Hong Leong"] }),
+        body: JSON.stringify({ keywords: ["Hong Leong"], fromDate: "2026-11-01", toDate: "2026-11-30" }),
       },
       env,
     );
@@ -633,7 +645,14 @@ describe("phase 0 API", () => {
     await expect(again.json()).resolves.toMatchObject({ saved: 0, alreadyKnown: 1 });
 
     const blairStatements = await app.request("/api/v1/statements", { headers: authed(blair.cookie) }, env);
-    await expect(blairStatements.json()).resolves.toEqual({ statements: [], truncated: false });
+    await expect(blairStatements.json()).resolves.toMatchObject({
+      statements: [],
+      page: 1,
+      pageSize: 10,
+      total: 0,
+      pageCount: 0,
+      hasMore: false,
+    });
     const alexStatements = await app.request("/api/v1/statements", { headers: authed(session.cookie) }, env);
     const listed = (await alexStatements.json()) as { statements: { subject: string; matchedKeywords: string[] }[] };
     expect(listed.statements[0]).toMatchObject({
@@ -646,5 +665,90 @@ describe("phase 0 API", () => {
       month: "2026-11",
       days: [{ date: "2026-11-10", status: "needs_review" }],
     });
+  });
+
+  it("reads a saved statement file with a sealed password and imports supported rows", async () => {
+    const encryptionKey = btoa("0123456789abcdef0123456789abcdef");
+    const storage = mkdtempSync(join(tmpdir(), "bnm-statements-"));
+    const env = await testEnv({
+      GOOGLE_CLIENT_ID: "gmail-client",
+      GOOGLE_CLIENT_SECRET: "gmail-secret",
+      TOKEN_ENCRYPTION_KEY: encryptionKey,
+      STATEMENT_STORAGE_DIR: storage,
+    });
+    const session = await devLogin(env, "alex");
+    const account = await createAccount(env, session, "Maybank Savings");
+    const key = decodeEncryptionKey(encryptionKey);
+    const now = new Date().toISOString();
+    await env.db.insert(schema.oauthConnections).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      provider: "gmail",
+      status: "connected",
+      scopes: "https://www.googleapis.com/auth/gmail.readonly",
+      encryptedRefreshToken: await sealString(key ?? new Uint8Array(), "refresh-secret"),
+      encryptionKeyVersion: "v1",
+      connectedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await env.db.insert(schema.statements).values({
+      id: crypto.randomUUID(),
+      userId: session.user.id,
+      source: "GMAIL",
+      status: "DISCOVERED",
+      checksum: "gmail:msg-1",
+      gmailMessageId: "msg-1",
+      subject: "Your Hong Leong e-Statement",
+      sender: "Hong Leong <notices@example.com>",
+      receivedOn: "2026-11-02",
+      matchedKeywords: "Hong Leong",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const saved = await app.request(
+      "/api/v1/statement-passwords",
+      {
+        method: "PUT",
+        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+        body: JSON.stringify({ label: "Hong Leong", password: "statement-pass", accountId: account.id }),
+      },
+      env,
+    );
+    expect(saved.status).toBe(201);
+    expect(JSON.stringify(await saved.json())).not.toContain("statement-pass");
+    const listedPasswords = await app.request("/api/v1/statement-passwords", { headers: authed(session.cookie) }, env);
+    expect(JSON.stringify(await listedPasswords.json())).not.toContain("statement-pass");
+
+    const csv = "date,description,amount,currency,direction\n2026-11-02,Salary,5000.00,MYR,IN\n2026-11-03,Groceries,42.10,MYR,OUT\n";
+    vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.startsWith("https://oauth2.googleapis.com/token")) return Response.json({ access_token: "access-secret" });
+      if (url.includes("/attachments/att-1")) return Response.json({ data: Buffer.from(csv).toString("base64url") });
+      if (url.includes("/messages/msg-1")) {
+        return Response.json({
+          payload: { parts: [{ filename: "statement.csv", mimeType: "text/csv", body: { attachmentId: "att-1" } }] },
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+
+    const read = await app.request("/api/v1/gmail/read", { method: "POST", headers: authed(session.cookie, session.csrfToken) }, env);
+    expect(read.status).toBe(200);
+    await expect(read.json()).resolves.toMatchObject({ checked: 1, statementsImported: 1, transactionsImported: 2, locked: 0 });
+    const imported = await env.db.select().from(schema.transactions);
+    expect(imported).toHaveLength(2);
+    expect(imported.every((row) => row.source === "STATEMENT" && row.status === "PENDING_REVIEW" && row.confidence === 60)).toBe(true);
+    const stored = await env.db.select().from(schema.statements);
+    expect(stored[0]).toMatchObject({ status: "REVIEW_REQUIRED", errorCode: null, parserVersion: "csv-columns-v1" });
+    const sealedFile = readFileSync(join(storage, stored[0]?.storageKey ?? ""), "utf8");
+    expect(sealedFile).not.toContain("statement-pass");
+    expect(sealedFile).not.toContain("Salary");
+
+    await env.db.execute(sql`update sync_jobs set started_at = '2020-01-01T00:00:00.000Z'`);
+    const again = await app.request("/api/v1/gmail/read", { method: "POST", headers: authed(session.cookie, session.csrfToken) }, env);
+    expect(again.status).toBe(200);
+    await expect(again.json()).resolves.toMatchObject({ checked: 0, transactionsImported: 0 });
+    expect(await env.db.select().from(schema.transactions)).toHaveLength(2);
   });
 });

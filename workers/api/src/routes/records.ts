@@ -5,7 +5,7 @@ import type { AppEnv } from "../env";
 import { getEnv } from "../http/context";
 import { ApiError } from "../http/errors";
 import { requireMutationCsrf, requireUser } from "../middleware/guards";
-import { findStatement, listStatements, listSyncJobs } from "../repositories/records";
+import { findStatement, listStatementsPage, listSyncJobs, STATEMENTS_PAGE_SIZE } from "../repositories/records";
 import { requireUuid } from "./ids";
 
 const statementSchema = z.object({
@@ -65,10 +65,17 @@ export const statementRoutes = new Hono<AppEnv>();
 statementRoutes.use("*", requireUser, requireMutationCsrf);
 
 statementRoutes.get("/", async (c) => {
-  const rows = await listStatements(getEnv(c).db, c.get("userId"));
+  const pageParam = c.req.query("page");
+  const parsed = z.coerce.number().int().min(1).safeParse(pageParam ?? 1);
+  if (!parsed.success) throw new ApiError(400, "validation_error", "Page must be a positive number.");
+  const listed = await listStatementsPage(getEnv(c).db, c.get("userId"), parsed.data, STATEMENTS_PAGE_SIZE);
   return c.json({
-    statements: rows.slice(0, 100).map((row) => presentStatement(row)),
-    truncated: rows.length > 100,
+    statements: listed.rows.map((row) => presentStatement(row)),
+    page: listed.page,
+    pageSize: listed.pageSize,
+    total: listed.total,
+    pageCount: listed.pageCount,
+    hasMore: listed.hasMore,
   });
 });
 

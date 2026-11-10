@@ -19,3 +19,5 @@ Desktop.ini
 *.tsbuildinfo
 .turbo
 .cache
+data/
+workers/api/data/

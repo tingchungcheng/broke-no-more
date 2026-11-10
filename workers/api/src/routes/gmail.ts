@@ -1,5 +1,5 @@
 import { oauthConnections, statements, syncJobs } from "@broke-no-more/database";
-import { normalizeStatementKeywords } from "@broke-no-more/shared";
+import { isoDateSchema, normalizeStatementKeywords, validateStatementScanRange } from "@broke-no-more/shared";
 import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -14,6 +14,7 @@ import {
 } from "../auth/gmail";
 import { decodeEncryptionKey, openSeal, sealString } from "../auth/seal";
 import { scanStatementMessages } from "../gmail/scan";
+import { readSavedStatements } from "../statements/read-saved";
 import type { AppEnv } from "../env";
 import { gmailConnectConfigured } from "../env";
 import { getEnv } from "../http/context";
@@ -88,12 +89,26 @@ gmailRoutes.get("/callback", async (c) => {
   }
 });
 
-const syncBody = z.object({ keywords: z.array(z.string()).min(1).max(12) });
+const syncBody = z
+  .object({
+    keywords: z.array(z.string()).min(1).max(12),
+    fromDate: isoDateSchema,
+    toDate: isoDateSchema,
+  })
+  .strict();
 
 gmailRoutes.post("/sync", requireMutationCsrf, async (c) => {
   const env = getEnv(c);
-  const keywords = normalizeStatementKeywords(syncBody.parse(await c.req.json()).keywords);
+  const parsed = syncBody.safeParse(await c.req.json());
+  if (!parsed.success) throw new ApiError(400, "validation_error", "Request is invalid.");
+  const keywords = normalizeStatementKeywords(parsed.data.keywords);
   if (keywords.length === 0) throw new ApiError(400, "validation_error", "Add at least one plain keyword.");
+  let range;
+  try {
+    range = validateStatementScanRange(parsed.data.fromDate, parsed.data.toDate);
+  } catch (error) {
+    throw new ApiError(400, "validation_error", error instanceof Error ? error.message : "Dates are invalid.");
+  }
   const db = env.db;
   const userId = c.get("userId");
   const key = decodeEncryptionKey(env.TOKEN_ENCRYPTION_KEY);
@@ -134,7 +149,7 @@ gmailRoutes.post("/sync", requireMutationCsrf, async (c) => {
   try {
     const refreshToken = await openSeal(key, connection.encryptedRefreshToken);
     const accessToken = await refreshGmailAccessToken(env, refreshToken);
-    const scan = await scanStatementMessages(accessToken, keywords);
+    const scan = await scanStatementMessages(accessToken, keywords, range);
     let saved = 0;
     for (const found of scan.discovered) {
       const existing = await db
@@ -173,6 +188,59 @@ gmailRoutes.post("/sync", requireMutationCsrf, async (c) => {
       .set({ status: "failed", errorCode: "gmail_sync_failed", finishedAt, updatedAt: finishedAt })
       .where(eq(syncJobs.id, jobId));
     throw new ApiError(502, "gmail_sync_failed", "Gmail could not be scanned. Try again in a moment.");
+  }
+});
+
+gmailRoutes.post("/read", requireMutationCsrf, async (c) => {
+  const env = getEnv(c);
+  const db = env.db;
+  const userId = c.get("userId");
+  const key = decodeEncryptionKey(env.TOKEN_ENCRYPTION_KEY);
+  const connectionRows = await db
+    .select()
+    .from(oauthConnections)
+    .where(and(eq(oauthConnections.userId, userId), eq(oauthConnections.provider, "gmail"), eq(oauthConnections.status, "connected")))
+    .limit(1);
+  const connection = connectionRows[0];
+  if (!connection?.encryptedRefreshToken || !key) {
+    throw new ApiError(409, "gmail_not_connected", "Connect Gmail before reading statements.");
+  }
+  const recent = await db
+    .select({ startedAt: syncJobs.startedAt, status: syncJobs.status })
+    .from(syncJobs)
+    .where(and(eq(syncJobs.userId, userId), eq(syncJobs.kind, "gmail_statement_read")))
+    .orderBy(desc(syncJobs.startedAt))
+    .limit(1);
+  const startedAt = recent[0]?.startedAt ? Date.parse(recent[0].startedAt) : Number.NaN;
+  if ((recent[0]?.status === "running" || recent[0]?.status === "succeeded") && Date.now() - startedAt < 15_000) {
+    throw new ApiError(429, "sync_too_soon", "Wait a few seconds before reading again.");
+  }
+  const now = new Date().toISOString();
+  const jobId = crypto.randomUUID();
+  await db.insert(syncJobs).values({
+    id: jobId,
+    userId,
+    kind: "gmail_statement_read",
+    status: "running",
+    retryCount: 0,
+    startedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+  try {
+    const refreshToken = await openSeal(key, connection.encryptedRefreshToken);
+    const accessToken = await refreshGmailAccessToken(env, refreshToken);
+    const result = await readSavedStatements(env, userId, accessToken);
+    const finishedAt = new Date().toISOString();
+    await db.update(syncJobs).set({ status: "succeeded", finishedAt, updatedAt: finishedAt }).where(eq(syncJobs.id, jobId));
+    return c.json(result);
+  } catch {
+    const finishedAt = new Date().toISOString();
+    await db
+      .update(syncJobs)
+      .set({ status: "failed", errorCode: "gmail_read_failed", finishedAt, updatedAt: finishedAt })
+      .where(eq(syncJobs.id, jobId));
+    throw new ApiError(502, "gmail_read_failed", "Saved statements could not be read. Try again in a moment.");
   }
 });
 

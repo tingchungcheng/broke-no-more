@@ -146,6 +146,23 @@ export const transactions = pgTable(
   ],
 );
 
+export const statementPasswords = pgTable(
+  "statement_passwords",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    encryptedPassword: text("encrypted_password").notNull(),
+    encryptionKeyVersion: text("encryption_key_version").notNull(),
+    accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("statement_passwords_user_id_idx").on(table.userId)],
+);
+
 export const syncJobs = pgTable(
   "sync_jobs",
   {

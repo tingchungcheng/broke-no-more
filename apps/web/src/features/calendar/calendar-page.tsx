@@ -1,12 +1,16 @@
 import type { ConfidenceStatus, Direction } from "@broke-no-more/shared";
-import { SUGGESTED_STATEMENT_KEYWORDS, normalizeStatementKeyword } from "@broke-no-more/shared";
+import { SUGGESTED_STATEMENT_KEYWORDS, monthDateBounds, normalizeStatementKeyword } from "@broke-no-more/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MoneyText } from "@/components/money-text";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
+import { ScanLoadingModal } from "./scan-loading-modal";
+import { StatementReadPanel } from "./statement-read-panel";
 import { ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +109,9 @@ export function CalendarPage() {
   const [stored, setStored] = useState(loadKeywords);
   const [draft, setDraft] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [scanStep, setScanStep] = useState<1 | 2>(1);
+  const [fromDate, setFromDate] = useState(() => monthDateBounds(currentMonth()).fromDate);
+  const [toDate, setToDate] = useState(() => monthDateBounds(currentMonth()).toDate);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -152,17 +159,28 @@ export function CalendarPage() {
         <p className="mt-2 max-w-2xl text-muted">
           Green is a matched record scoring 85 or more. Yellow is a statement email that still needs review. Grey is a
           record you entered that no statement has confirmed. Red is a conflict, and it overrides the score. Statement
-          files are not parsed yet, so a scan cannot turn a day green by itself.
+          Reading a file can add rows in yellow. A day turns green only after a match scores 85 or more.
         </p>
       </div>
 
       <Card>
         <h2 className="font-serif text-2xl">Scan statements</h2>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
-          Press a word to include it. The scan keeps a message only when the subject says it is a statement and contains
-          one of the selected words. Promotions and one-time codes stay out.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2" aria-label="Statement keywords">
+        <ol className="mt-3 flex flex-wrap gap-4 text-sm">
+          <li className={cn("font-medium", scanStep === 1 ? "text-ink" : "text-muted")}>1. Choose keywords</li>
+          <li className={cn("font-medium", scanStep === 2 ? "text-ink" : "text-muted")}>2. Choose a date range</li>
+        </ol>
+        {scanStep === 1 ? (
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Press a word to include it. The scan keeps a message only when the subject says it is a statement and contains
+            one of the selected words. Promotions and one-time codes stay out.
+          </p>
+        ) : (
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Gmail is searched only between these dates (Malaysia calendar days). Pick a short window so an old inbox is not
+            pulled in by mistake. The longest range is one year.
+          </p>
+        )}
+        <div className={cn("mt-4 flex flex-wrap gap-2", scanStep === 2 ? "opacity-60" : "")} aria-label="Statement keywords">
           {chips.map((keyword) => {
             const active = stored.selected.some((item) => item.toLowerCase() === keyword.toLowerCase());
             return (
@@ -174,15 +192,45 @@ export function CalendarPage() {
                   "rounded-full border px-3 py-1.5 text-sm",
                   active ? "border-moss bg-moss text-paper" : "border-line bg-card text-ink",
                 )}
-                onClick={() => toggleKeyword(keyword)}
+                onClick={() => {
+                  if (scanStep === 2) return;
+                  toggleKeyword(keyword);
+                }}
+                disabled={scanStep === 2}
               >
                 {keyword}
               </button>
             );
           })}
         </div>
+        {scanStep === 2 ? (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="scan-from">From</Label>
+              <Input id="scan-from" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scan-to">To</Label>
+              <Input id="scan-to" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} required />
+            </div>
+            <div className="sm:col-span-2 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const bounds = monthDateBounds(month);
+                  setFromDate(bounds.fromDate);
+                  setToDate(bounds.toDate);
+                }}
+              >
+                Use {monthTitle(month)}
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <form
-          className="mt-4 flex flex-wrap gap-2"
+          className={cn("mt-4 flex flex-wrap gap-2", scanStep === 2 ? "hidden" : "")}
           onSubmit={(event) => {
             event.preventDefault();
             addKeyword();
@@ -204,38 +252,67 @@ export function CalendarPage() {
         </form>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {me?.gmailConnected ? (
-            <Button
-              type="button"
-              disabled={pending || stored.selected.length === 0}
-              onClick={() => {
-                setPending(true);
-                setError(null);
-                setNotice(null);
-                void api<{ inspected: number; saved: number; alreadyKnown: number }>("/gmail/sync", {
-                  method: "POST",
-                  body: JSON.stringify({ keywords: stored.selected }),
-                })
-                  .then(async (result) => {
-                    setNotice(
-                      `Checked ${result.inspected} messages. Saved ${result.saved} new statements. ${result.alreadyKnown} were already saved.`,
-                    );
-                    await queryClient.invalidateQueries({ queryKey: ["calendar"] });
-                    await queryClient.invalidateQueries({ queryKey: ["statements"] });
-                  })
-                  .catch((caught: unknown) => {
-                    setError(caught instanceof ApiClientError ? caught.message : "The scan did not finish.");
-                  })
-                  .finally(() => setPending(false));
-              }}
-            >
-              {pending ? "Scanning…" : "Scan statements"}
-            </Button>
+            scanStep === 1 ? (
+              <Button
+                type="button"
+                disabled={stored.selected.length === 0}
+                onClick={() => {
+                  const bounds = monthDateBounds(month);
+                  setFromDate(bounds.fromDate);
+                  setToDate(bounds.toDate);
+                  setScanStep(2);
+                  setError(null);
+                }}
+              >
+                Continue to dates
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={() => setScanStep(1)}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  disabled={pending || stored.selected.length === 0 || !fromDate || !toDate}
+                  onClick={() => {
+                    setPending(true);
+                    setError(null);
+                    setNotice(null);
+                    void api<{ inspected: number; saved: number; alreadyKnown: number }>("/gmail/sync", {
+                      method: "POST",
+                      body: JSON.stringify({ keywords: stored.selected, fromDate, toDate }),
+                    })
+                      .then(async (result) => {
+                        setNotice(
+                          `Checked ${result.inspected} messages between ${fromDate} and ${toDate}. Saved ${result.saved} new statements. ${result.alreadyKnown} were already saved.`,
+                        );
+                        setScanStep(1);
+                        await queryClient.invalidateQueries({ queryKey: ["calendar"] });
+                        await queryClient.invalidateQueries({ queryKey: ["statements"] });
+                      })
+                      .catch((caught: unknown) => {
+                        setError(caught instanceof ApiClientError ? caught.message : "The scan did not finish.");
+                      })
+                      .finally(() => setPending(false));
+                  }}
+                >
+                  Scan statements
+                </Button>
+              </>
+            )
           ) : (
             <Link to="/settings/connections" className="text-sm text-moss">
               Connect Gmail before scanning
             </Link>
           )}
-          {stored.selected.length === 0 ? <p className="text-sm text-muted">Select at least one keyword.</p> : null}
+          {scanStep === 1 && stored.selected.length === 0 ? (
+            <p className="text-sm text-muted">Select at least one keyword.</p>
+          ) : null}
         </div>
         {notice ? <p className="mt-3 text-sm">{notice}</p> : null}
         {error ? (
@@ -244,6 +321,8 @@ export function CalendarPage() {
           </p>
         ) : null}
       </Card>
+
+      <StatementReadPanel keywords={stored.selected} />
 
       <Card>
         <div className="flex items-center justify-between gap-3">
@@ -327,6 +406,8 @@ export function CalendarPage() {
           </ul>
         ) : null}
       </Card>
+
+      {pending ? <ScanLoadingModal keywords={stored.selected} fromDate={fromDate} toDate={toDate} /> : null}
     </div>
   );
 }

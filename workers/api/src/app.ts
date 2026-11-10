@@ -8,6 +8,7 @@ import { authRoutes } from "./routes/auth";
 import { gmailRoutes } from "./routes/gmail";
 import { healthRoutes } from "./routes/health";
 import { statementRoutes, syncJobRoutes } from "./routes/records";
+import { statementPasswordRoutes } from "./routes/statement-passwords";
 import { transactionRoutes } from "./routes/transactions";
 
 export const app = new Hono<AppEnv>();
@@ -24,6 +25,7 @@ v1.route("/accounts", accountRoutes);
 v1.route("/calendar", calendarRoutes);
 v1.route("/transactions", transactionRoutes);
 v1.route("/statements", statementRoutes);
+v1.route("/statement-passwords", statementPasswordRoutes);
 v1.route("/sync-jobs", syncJobRoutes);
 app.route("/api/v1", v1);
 

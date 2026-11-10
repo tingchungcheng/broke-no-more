@@ -1,4 +1,10 @@
-import { messageIsStatement, receivedOnInMalaysia, statementSearchQuery } from "@broke-no-more/shared";
+import {
+  messageIsStatement,
+  receivedOnInMalaysia,
+  receivedOnWithinRange,
+  type StatementScanRange,
+  statementSearchQuery,
+} from "@broke-no-more/shared";
 
 export type DiscoveredStatement = {
   gmailMessageId: string;
@@ -23,6 +29,7 @@ function header(message: GmailMessage, name: string): string {
 export async function scanStatementMessages(
   accessToken: string,
   keywords: string[],
+  range: StatementScanRange,
 ): Promise<{ inspected: number; discovered: DiscoveredStatement[] }> {
   const discovered: DiscoveredStatement[] = [];
   let inspected = 0;
@@ -30,7 +37,7 @@ export async function scanStatementMessages(
 
   for (let page = 0; page < 4; page += 1) {
     const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    url.searchParams.set("q", statementSearchQuery(keywords));
+    url.searchParams.set("q", statementSearchQuery(keywords, range));
     url.searchParams.set("maxResults", "25");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const listResponse = await fetch(url, { headers: { authorization: `Bearer ${accessToken}` } });
@@ -55,7 +62,7 @@ export async function scanStatementMessages(
         const sender = header(message, "From");
         const decision = messageIsStatement({ subject, from: sender, keywords });
         const receivedOn = receivedOnInMalaysia(Number(message.internalDate));
-        if (!decision.keep || !receivedOn) continue;
+        if (!decision.keep || !receivedOn || !receivedOnWithinRange(receivedOn, range)) continue;
         discovered.push({
           gmailMessageId: id,
           subject: subject.slice(0, 300),

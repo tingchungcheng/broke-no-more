@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { messageIsStatement, normalizeStatementKeywords, receivedOnInMalaysia, statementSearchQuery } from "./statement-search";
+import {
+  messageIsStatement,
+  normalizeStatementKeywords,
+  receivedOnInMalaysia,
+  statementSearchQuery,
+  validateStatementScanRange,
+} from "./statement-search";
 
 describe("statement keyword search", () => {
   it("keeps a short list of plain phrases", () => {
@@ -11,12 +17,18 @@ describe("statement keyword search", () => {
   });
 
   it("requires statement language in the Gmail query and quotes each keyword", () => {
-    const query = statementSearchQuery(["Hong Leong", "RYT"]);
+    const query = statementSearchQuery(["Hong Leong", "RYT"], { fromDate: "2026-11-01", toDate: "2026-11-30" });
     expect(query).toContain("subject:statement");
     expect(query).toContain("subject:e-statement");
     expect(query).toContain('"Hong Leong"');
     expect(query).toContain('"RYT"');
+    expect(query).toContain("after:2026/11/01");
+    expect(query).toContain("before:2026/12/01");
     expect(query).not.toContain("in:inbox");
+  });
+
+  it("rejects scan ranges longer than a year", () => {
+    expect(() => validateStatementScanRange("2023-01-01", "2026-11-10")).toThrow(/366/);
   });
 
   it("keeps statement subjects that match a chosen keyword and drops everything else", () => {
