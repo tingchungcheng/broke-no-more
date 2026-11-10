@@ -16,6 +16,6 @@ Phase 0 controls:
 Known gaps, left for later phases:
 
 - No rate limits yet.
-- No Gmail token encryption yet, because no Gmail token is stored. `TOKEN_ENCRYPTION_KEY` is reserved.
+- A Gmail refresh token is sealed with AES-GCM before it is stored. The browser never receives it. Disconnect revokes the token and deletes the sealed value.
 - No full-workspace export or deletion yet. Account delete removes that account and its transactions.
 - Production should terminate TLS on the same origin as the API. The local app relies on the Vite proxy for that.

@@ -1,3 +1,4 @@
+import { decodeEncryptionKey } from "./auth/seal";
 import type { Database } from "./db";
 
 export type EnvConfig = {
@@ -12,6 +13,7 @@ export type EnvConfig = {
   COGNITO_CLIENT_ID?: string;
   COGNITO_CLIENT_SECRET?: string;
   COGNITO_DOMAIN?: string;
+  TOKEN_ENCRYPTION_KEY?: string;
 };
 
 export type Env = EnvConfig & {
@@ -42,6 +44,7 @@ export function readConfig(source: NodeJS.ProcessEnv | EnvConfig): EnvConfig {
     COGNITO_CLIENT_ID: source.COGNITO_CLIENT_ID,
     COGNITO_CLIENT_SECRET: source.COGNITO_CLIENT_SECRET,
     COGNITO_DOMAIN: source.COGNITO_DOMAIN,
+    TOKEN_ENCRYPTION_KEY: source.TOKEN_ENCRYPTION_KEY,
   };
 }
 
@@ -59,6 +62,10 @@ export function googleAuthConfigured(env: EnvConfig): boolean {
 
 export function cognitoAuthConfigured(env: EnvConfig): boolean {
   return Boolean(env.COGNITO_USER_POOL_ID && env.COGNITO_CLIENT_ID && env.COGNITO_DOMAIN);
+}
+
+export function gmailConnectConfigured(env: EnvConfig): boolean {
+  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && decodeEncryptionKey(env.TOKEN_ENCRYPTION_KEY));
 }
 
 const LOCAL_SESSION_SECRET = "local-dev-only-session-secret-not-for-production";

@@ -88,6 +88,7 @@ export async function loadAuthConfig(): Promise<{
   googleAuthEnabled: boolean;
   cognitoAuthEnabled: boolean;
   devAuthEnabled: boolean;
+  gmailConnectEnabled: boolean;
 }> {
   return api("/auth/config");
 }

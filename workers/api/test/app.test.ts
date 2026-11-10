@@ -9,6 +9,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readSignedValue } from "../src/auth/crypto";
+import { decodeEncryptionKey, openSeal } from "../src/auth/seal";
 import type { OauthState } from "../src/auth/google";
 import { app } from "../src/app";
 import type { Database } from "../src/db";
@@ -425,5 +426,67 @@ describe("phase 0 API", () => {
     const body = (await me.json()) as { user: { email: string; name: string; pictureUrl: string | null }; gmailConnected: boolean };
     expect(body.user).toMatchObject({ email: "casey@example.com", name: "Casey Rahman", pictureUrl: null });
     expect(body.gmailConnected).toBe(false);
+  });
+
+  it("connects Gmail on a separate consent and stores only a sealed refresh token", async () => {
+    const encryptionKey = btoa("0123456789abcdef0123456789abcdef");
+    const env = await testEnv({
+      GOOGLE_CLIENT_ID: "gmail-client",
+      GOOGLE_CLIENT_SECRET: "gmail-secret",
+      TOKEN_ENCRYPTION_KEY: encryptionKey,
+    });
+    const session = await devLogin(env, "alex");
+    const start = await app.request("/api/v1/gmail/connect", { headers: { cookie: session.cookie } }, env);
+    expect(start.status).toBe(302);
+    const location = new URL(start.headers.get("location") ?? "");
+    expect(location.origin).toBe("https://accounts.google.com");
+    expect(location.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly");
+    expect(location.searchParams.get("include_granted_scopes")).toBe("false");
+    expect(location.searchParams.get("redirect_uri")).toBe("http://localhost:5173/api/v1/gmail/callback");
+    expect(location.searchParams.get("scope")).not.toContain("openid");
+
+    const oauth = await readSignedValue<OauthState>(
+      decodeURIComponent(cookiePair(start, "bnm_gmail").slice("bnm_gmail=".length)),
+      env.SESSION_SECRET ?? "",
+    );
+    vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.startsWith("https://oauth2.googleapis.com/token")) {
+        return Response.json({ refresh_token: "refresh-secret", access_token: "access-secret" });
+      }
+      if (url.startsWith("https://gmail.googleapis.com/gmail/v1/users/me/profile")) {
+        return Response.json({ emailAddress: "alex.mailbox@example.com" });
+      }
+      if (url.startsWith("https://oauth2.googleapis.com/revoke")) return new Response(null, { status: 200 });
+      throw new Error(`Unexpected fetch ${url}`);
+    });
+
+    const callback = await app.request(
+      `/api/v1/gmail/callback?code=test-code&state=${encodeURIComponent(oauth.state)}`,
+      { headers: { cookie: `${session.cookie}; ${cookiePair(start, "bnm_gmail")}` } },
+      env,
+    );
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get("location")).toBe("http://localhost:5173/settings/connections");
+
+    const stored = await env.db.select().from(schema.oauthConnections);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.encryptedRefreshToken).not.toContain("refresh-secret");
+    const key = decodeEncryptionKey(encryptionKey);
+    expect(key).not.toBeNull();
+    expect(await openSeal(key ?? new Uint8Array(), stored[0]?.encryptedRefreshToken ?? "")).toBe("refresh-secret");
+
+    const me = await app.request("/api/v1/auth/me", { headers: { cookie: session.cookie } }, env);
+    await expect(me.json()).resolves.toMatchObject({ gmailConnected: true });
+
+    const disconnect = await app.request(
+      "/api/v1/gmail/disconnect",
+      { method: "POST", headers: authed(session.cookie, session.csrfToken) },
+      env,
+    );
+    expect(disconnect.status).toBe(204);
+    const after = await env.db.select().from(schema.oauthConnections);
+    expect(after[0]?.status).toBe("disconnected");
+    expect(after[0]?.encryptedRefreshToken).toBeNull();
   });
 });

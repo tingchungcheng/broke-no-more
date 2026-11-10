@@ -4,7 +4,7 @@ import { createCognitoStart, exchangeCognitoCode, verifyCognitoIdToken } from ".
 import { createOauthState, exchangeGoogleCode, openOauthState, verifyGoogleIdToken } from "../auth/google";
 import { DEV_PERSONAS } from "../auth/personas";
 import { createSession, deleteSessionById, sessionResponse, upsertIdentity } from "../auth/session";
-import { cognitoAuthConfigured, googleAuthConfigured, isDevAuthAllowed, type AppEnv } from "../env";
+import { cognitoAuthConfigured, gmailConnectConfigured, googleAuthConfigured, isDevAuthAllowed, type AppEnv } from "../env";
 import { getEnv } from "../http/context";
 import { clearCookie, OAUTH_COOKIE, readCookie, SESSION_COOKIE, writeOauthCookie, writeSessionCookie } from "../http/cookies";
 import { ApiError } from "../http/errors";
@@ -22,6 +22,7 @@ authRoutes.get("/config", (c) => {
     googleAuthEnabled: googleAuthConfigured(env),
     cognitoAuthEnabled: cognitoAuthConfigured(env),
     devAuthEnabled: isDevAuthAllowed(env),
+    gmailConnectEnabled: gmailConnectConfigured(env),
   });
 });
 

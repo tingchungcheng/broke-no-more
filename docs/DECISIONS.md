@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-11-10 — Gmail consent is separate and does not search mail yet
+
+Context: sign-in must not grant inbox access, and no verified bank-sender list exists.
+
+Decision: Connect Gmail is a second OAuth consent for `gmail.readonly` only. The refresh token is sealed with AES-GCM and is not returned to the browser. Disconnect revokes it and deletes the sealed value. Message search and statement storage wait until a sender list is verified.
+
+Consequences: a user can connect a mailbox. The app does not download mail in this change.
+
 ## 2026-11-10 — Charts use confirmed cash flow, not net worth
 
 Context: the overview had counts and a recent list, and net worth must stay uncalculated until statement balances exist.

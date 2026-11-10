@@ -47,15 +47,16 @@ export function DashboardPage() {
         </Card>
       </section>
       <CashFlowCharts transactions={transactions.data?.transactions ?? []} truncated={transactions.data?.truncated ?? false} />
-      {!me?.gmailConnected ? (
-        <Card className="border-dashed">
-          <p className="font-medium">Gmail is not connected</p>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Signing in does not grant inbox access. Statement discovery will be a separate consent step. It is not
-            available in this version.
-          </p>
-        </Card>
-      ) : null}
+      <Card className="border-dashed">
+        <p className="font-medium">{me?.gmailConnected ? "Gmail is connected" : "Gmail is not connected"}</p>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          Signing in does not grant inbox access. Mailbox consent is separate, and this version does not search for
+          statements yet.
+        </p>
+        <Link to="/settings/connections" className="mt-3 inline-block text-sm text-moss">
+          {me?.gmailConnected ? "Review the connection" : "Connect Gmail"}
+        </Link>
+      </Card>
       <section>
         <h2 className="font-serif text-2xl">Recent transactions</h2>
         {transactions.data && transactions.data.transactions.length === 0 ? (

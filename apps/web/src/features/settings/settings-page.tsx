@@ -1,6 +1,10 @@
-import { NavLink, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { NavLink, useParams, useSearchParams } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { loadAuthConfig } from "@/features/auth/login-page";
 import { useAuth } from "@/hooks/use-auth";
+import { ApiClientError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const sections = [
@@ -13,7 +17,11 @@ const sections = [
 export function SettingsPage() {
   const params = useParams();
   const section = sections.some((item) => item.id === params.section) ? params.section : "profile";
-  const { me } = useAuth();
+  const { me, api, refresh } = useAuth();
+  const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const config = useQuery({ queryKey: ["auth-config"], queryFn: loadAuthConfig });
+  const gmailError = searchParams.get("error");
 
   return (
     <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
@@ -50,9 +58,56 @@ export function SettingsPage() {
           <>
             <h1 className="font-serif text-3xl">Connections</h1>
             <p className="mt-3 leading-relaxed text-muted">
-              Gmail is {me?.gmailConnected ? "connected" : "not connected"}. Sign-in and mailbox access are separate.
-              This version does not start a Gmail consent flow, and it does not store a mailbox token.
+              Gmail is {me?.gmailConnected ? "connected" : "not connected"}. Sign-in and mailbox access stay separate.
+              The only scope requested here is read-only Gmail. Statement search is not turned on yet.
             </p>
+            {gmailError === "gmail_not_configured" ? (
+              <p className="mt-4 text-sm text-danger" role="alert">
+                Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and TOKEN_ENCRYPTION_KEY on the API. Register the redirect
+                URI http://localhost:5173/api/v1/gmail/callback on that Google client.
+              </p>
+            ) : null}
+            {gmailError === "gmail_denied" ? (
+              <p className="mt-4 text-sm text-danger" role="alert">
+                Gmail access was cancelled.
+              </p>
+            ) : null}
+            {gmailError === "gmail_auth_failed" ? (
+              <p className="mt-4 text-sm text-danger" role="alert">
+                Gmail connection did not finish. Try again from http://localhost:5173 so the return address matches.
+              </p>
+            ) : null}
+            <div className="mt-6 flex flex-wrap gap-3">
+              {me?.gmailConnected ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    void api("/gmail/disconnect", { method: "POST" })
+                      .then(async () => {
+                        await queryClient.invalidateQueries({ queryKey: ["me"] });
+                        await refresh();
+                      })
+                      .catch((caught: unknown) => {
+                        window.alert(caught instanceof ApiClientError ? caught.message : "Could not disconnect Gmail.");
+                      });
+                  }}
+                >
+                  Disconnect Gmail
+                </Button>
+              ) : config.data?.gmailConnectEnabled ? (
+                <a
+                  href="/api/v1/gmail/connect"
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-moss px-5 text-sm font-medium text-paper"
+                >
+                  Connect Gmail
+                </a>
+              ) : (
+                <p className="text-sm text-muted">
+                  Connect Gmail appears after the API has a Google OAuth client and a token encryption key.
+                </p>
+              )}
+            </div>
           </>
         ) : null}
         {section === "privacy" ? (

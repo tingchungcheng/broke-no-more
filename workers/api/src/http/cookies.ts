@@ -6,6 +6,7 @@ import { getEnv } from "./context";
 
 export const SESSION_COOKIE = "bnm_session";
 export const OAUTH_COOKIE = "bnm_oauth";
+export const GMAIL_COOKIE = "bnm_gmail";
 
 function cookieBase(c: Context<AppEnv>) {
   return {
@@ -26,6 +27,10 @@ export function writeSessionCookie(c: Context<AppEnv>, token: string): void {
 
 export function writeOauthCookie(c: Context<AppEnv>, value: string): void {
   setCookie(c, OAUTH_COOKIE, value, { ...cookieBase(c), maxAge: 60 * 10 });
+}
+
+export function writeGmailCookie(c: Context<AppEnv>, value: string): void {
+  setCookie(c, GMAIL_COOKIE, value, { ...cookieBase(c), maxAge: 60 * 10 });
 }
 
 export function clearCookie(c: Context<AppEnv>, name: string): void {

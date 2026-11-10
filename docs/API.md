@@ -15,6 +15,9 @@ Base path: `/api/v1`. The session owns the user. A `userId` in the body or query
 | GET | `/auth/config` | Public. `{ googleAuthEnabled, devAuthEnabled }` |
 | GET | `/auth/cognito` | Redirect to the Cognito hosted UI with Google. Identity scopes only |
 | GET | `/auth/cognito/callback` | Sets `bnm_session` and redirects to `/dashboard` |
+| GET | `/gmail/connect` | Signed-in user. Starts a separate `gmail.readonly` consent |
+| GET | `/gmail/callback` | Seals the refresh token and returns to settings |
+| POST | `/gmail/disconnect` | Revokes the token and deletes the sealed value |
 | GET | `/auth/google` | Direct Google OIDC when Cognito is not configured |
 | GET | `/auth/google/callback` | Sets `bnm_session` and redirects to `/dashboard` |
 | POST | `/auth/dev-login` | Local only. Body `{ "persona": "alex" \| "blair" }` |
