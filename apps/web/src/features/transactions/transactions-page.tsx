@@ -23,10 +23,14 @@ import { todayInputValue } from "@/lib/utils";
 export function TransactionsPage() {
   const { api } = useAuth();
   const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<{ accounts: Account[] }>("/accounts") });
   const transactions = useQuery({
-    queryKey: ["transactions"],
-    queryFn: () => api<{ transactions: Transaction[] }>("/transactions"),
+    queryKey: ["transactions", page],
+    queryFn: () =>
+      api<{ transactions: Transaction[]; page: number; pageSize: number; total: number; pageCount: number; hasMore: boolean }>(
+        `/transactions?page=${page}`,
+      ),
   });
   const [accountId, setAccountId] = useState("");
   const [amount, setAmount] = useState("");
@@ -60,14 +64,19 @@ export function TransactionsPage() {
       setDescription("");
       setMerchantName("");
       setError(null);
+      setPage(1);
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["analytics"] });
     },
     onError: (caught) => setError(caught instanceof ApiClientError ? caught.message : "Could not save the transaction."),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/transactions/${id}`, { method: "DELETE" }),
-    onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await queryClient.invalidateQueries({ queryKey: ["analytics"] });
+    },
   });
 
   function onSubmit(event: FormEvent) {
@@ -166,10 +175,20 @@ export function TransactionsPage() {
       </Card>
       <section>
         <h2 className="font-serif text-3xl">Ledger</h2>
-        <p className="mt-2 text-sm text-muted">Each row keeps the description you entered. Source stays visible.</p>
-        {transactions.data?.transactions.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">
+          A repayment is a payment onto that account, such as paying a credit card. It is not income, and it is left out
+          of cash flow.
+        </p>
+        {transactions.data?.total === 0 ? (
           <p className="mt-4 text-sm text-muted">No transactions yet.</p>
         ) : (
+          <>
+          <p className="mt-4 text-sm text-muted">
+            Showing{" "}
+            {transactions.data
+              ? `${(transactions.data.page - 1) * transactions.data.pageSize + 1}–${Math.min(transactions.data.page * transactions.data.pageSize, transactions.data.total)} of ${transactions.data.total}`
+              : "…"}
+          </p>
           <ul className="mt-4 divide-y divide-line rounded-3xl border border-line bg-card">
             {transactions.data?.transactions.map((transaction) => (
               <li key={transaction.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -182,7 +201,12 @@ export function TransactionsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <MoneyText amountMinor={transaction.amountMinor} currency={transaction.currency} direction={transaction.direction} />
+                  <MoneyText
+                    amountMinor={transaction.amountMinor}
+                    currency={transaction.currency}
+                    direction={transaction.direction}
+                    transactionType={transaction.transactionType}
+                  />
                   <Button type="button" variant="ghost" size="sm" onClick={() => remove.mutate(transaction.id)}>
                     Remove
                   </Button>
@@ -190,6 +214,26 @@ export function TransactionsPage() {
               </li>
             ))}
           </ul>
+          {(transactions.data?.pageCount ?? 0) > 1 ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Button type="button" variant="secondary" size="sm" disabled={page <= 1 || transactions.isFetching} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+                Previous
+              </Button>
+              <span className="text-sm tabular-nums text-muted">
+                Page {transactions.data?.page ?? page} of {transactions.data?.pageCount ?? 1}
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!transactions.data?.hasMore || transactions.isFetching}
+                onClick={() => setPage((value) => value + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          ) : null}
+          </>
         )}
       </section>
     </div>

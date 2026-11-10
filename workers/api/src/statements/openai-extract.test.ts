@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { transactionsFromModelJson } from "./openai-extract";
+import { applyModelClassifications, transactionsFromModelJson } from "./openai-extract";
 
 describe("OpenAI statement extraction", () => {
   it("keeps dated rows and drops invented blanks", () => {
@@ -19,6 +19,39 @@ describe("OpenAI statement extraction", () => {
         direction: "OUT",
         transactionType: "EXPENSE",
       },
+    ]);
+  });
+
+  it("turns a card payment into a repayment and keeps a charge as spending", () => {
+    const rows = applyModelClassifications(
+      [
+        {
+          transactionDate: "2026-10-03",
+          description: "PAYMENT THANK YOU - IB",
+          amountMinor: 161677,
+          currency: "MYR",
+          direction: "IN" as const,
+          transactionType: "INCOME" as const,
+        },
+        {
+          transactionDate: "2026-10-20",
+          description: "SPAYLATER REPAYMENT-EC",
+          amountMinor: 2000,
+          currency: "MYR",
+          direction: "IN" as const,
+          transactionType: "INCOME" as const,
+        },
+      ],
+      {
+        rows: [
+          { index: 0, direction: "IN", transactionType: "INCOME" },
+          { index: 1, direction: "OUT", transactionType: "EXPENSE" },
+        ],
+      },
+    );
+    expect(rows.map((row) => [row.description, row.direction, row.transactionType])).toEqual([
+      ["PAYMENT THANK YOU - IB", "IN", "REPAYMENT"],
+      ["SPAYLATER REPAYMENT-EC", "OUT", "EXPENSE"],
     ]);
   });
 

@@ -32,12 +32,17 @@ const statementPasswordsMigration = readFileSync(
   resolve(migrationsDirectory, "0003_statement_passwords.sql"),
   "utf8",
 );
+const statementBalancesMigration = readFileSync(
+  resolve(migrationsDirectory, "0004_statement_balances.sql"),
+  "utf8",
+);
 
 async function testEnv(overrides: Partial<Env> = {}): Promise<Env> {
   const client = new PGlite();
   await client.exec(migration);
   await client.exec(statementDiscovery);
   await client.exec(statementPasswordsMigration);
+  await client.exec(statementBalancesMigration);
   const db = drizzle(client, { schema }) as unknown as Database;
   return {
     db,

@@ -1,11 +1,13 @@
 import { accounts, statementPasswords, statements, transactions } from "@broke-no-more/database";
-import { normalizeDescription, parseStatementText, rankStatementAccounts, type ParsedStatement } from "@broke-no-more/shared";
+import { closingBalanceFromText, normalizeDescription, parseDecimalToMinor, parseStatementText, rankStatementAccounts, type ParsedStatement } from "@broke-no-more/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { sha256Hex } from "../auth/crypto";
 import { decodeEncryptionKey, openSeal, sealString } from "../auth/seal";
 import type { Env } from "../env";
 import { downloadAttachment, fetchMessagePayload, findStatementAttachments } from "../gmail/attachments";
-import { extractStatementWithOpenAi } from "./openai-extract";
+import { rememberClosingBalances } from "./balances";
+import { applyModelClassifications, classifyStatementRows, extractStatementWithOpenAi } from "./openai-extract";
+import { reclassifyPendingStatementRows } from "./reclassify";
 import { extractPdfText } from "./pdf-text";
 import { statementStorageRoot, storeSealedStatement } from "./store";
 
@@ -79,6 +81,8 @@ export async function readSavedStatements(env: Env, userId: string, accessToken:
     needsAccount: 0,
   };
   if (!key) return result;
+  await reclassifyPendingStatementRows(env, userId).catch(() => 0);
+  await rememberClosingBalances(env, userId).catch(() => 0);
   const db = env.db;
   const rows = await db
     .select()
@@ -187,7 +191,7 @@ async function finishParsed(
   env: Env,
   key: NonNullable<ReturnType<typeof decodeEncryptionKey>>,
   result: ReadSavedResult,
-  statement: { id: string; userId: string },
+  statement: { id: string; userId: string; receivedOn?: string | null },
   opened: OpenedFile,
   parsed: ParsedStatement,
   accountId: string | null,
@@ -209,9 +213,33 @@ async function finishParsed(
     result.needsAccount += 1;
     return;
   }
+  await env.db
+    .update(statements)
+    .set({ accountId: account.id, updatedAt: new Date().toISOString() })
+    .where(and(eq(statements.id, statement.id), eq(statements.userId, statement.userId)));
+  const found = closingBalanceFromText(opened.text);
+  if (found) {
+    try {
+      const amountMinor = parseDecimalToMinor(found.amount, account.currency);
+      await env.db
+        .update(statements)
+        .set({
+          accountId: account.id,
+          closingBalanceMinor: amountMinor,
+          balanceAsOf: statement.receivedOn ?? null,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(and(eq(statements.id, statement.id), eq(statements.userId, statement.userId)));
+    } catch {
+      // A balance line that is not a plain decimal is ignored.
+    }
+  }
+  const typed = env.OPENAI_API_KEY
+    ? await classifyStatementRows(env.OPENAI_API_KEY, account.type, parsed.transactions)
+    : applyModelClassifications(parsed.transactions, null);
   let imported = 0;
   let mismatched = 0;
-  for (const row of parsed.transactions) {
+  for (const row of typed) {
     const currency = row.currency ?? account.currency;
     if (currency !== account.currency) {
       mismatched += 1;

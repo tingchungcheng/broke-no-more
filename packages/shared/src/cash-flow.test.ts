@@ -53,6 +53,18 @@ describe("monthly cash flow", () => {
     ]);
   });
 
+  it("includes rows that still need review when asked, and still omits repayments", () => {
+    const points = monthlyCashFlow(
+      [
+        row({ status: "PENDING_REVIEW", amountMinor: 1500 }),
+        row({ status: "PENDING_REVIEW", amountMinor: 161677, direction: "IN", transactionType: "REPAYMENT" }),
+      ],
+      "MYR",
+      { includeNeedsReview: true },
+    );
+    expect(points).toEqual([{ month: "2026-11", moneyInMinor: 0, moneyOutMinor: 1500 }]);
+  });
+
   it("prefers MYR when more than one currency has chartable rows", () => {
     expect(chartCurrencies([row({ currency: "SGD" }), row()])).toEqual(["MYR", "SGD"]);
   });

@@ -19,7 +19,9 @@ Base path: `/api/v1`. The session owns the user. A `userId` in the body or query
 | GET | `/gmail/callback` | Seals the refresh token and returns to settings |
 | POST | `/gmail/disconnect` | Revokes the token and deletes the sealed value |
 | POST | `/gmail/sync` | Signed-in user with Gmail connected. Body `{ "keywords": ["Hong Leong"], "fromDate": "YYYY-MM-DD", "toDate": "YYYY-MM-DD" }`. Range max 366 days. Stores statement subjects only |
-| POST | `/gmail/read` | Downloads PDF or CSV attachments, opens a locked PDF with the password whose phrase appears in the email subject, imports a supported table, and asks OpenAI only when that table reader finds no rows |
+| POST | `/gmail/read` | Downloads PDF or CSV attachments, opens a locked PDF with the password whose phrase appears in the email subject, imports a supported table, and asks OpenAI to classify rows. A card payment is a repayment, not income |
+| GET | `/transactions?page=1` | The caller's ledger, 20 rows per page |
+| GET | `/analytics/overview` | Cash flow, including rows in review, and net worth from the latest statement balance |
 | GET | `/statement-passwords` | Labels and account ids. The password is never returned |
 | PUT | `/statement-passwords` | Body `{ "label": "Hong Leong", "password": "...", "accountId": null }`, or `{ "accountId": "…", "labels": ["Hong Leong", "credit card"], "password": "..." }` (up to 3 labels; password optional when keywords already exist). Seals the password |
 | GET | `/calendar?month=2026-11` | Days in that month with a confidence status |

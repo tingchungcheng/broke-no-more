@@ -99,6 +99,8 @@ export const statements = pgTable(
     sender: text("sender"),
     receivedOn: text("received_on"),
     matchedKeywords: text("matched_keywords"),
+    closingBalanceMinor: integer("closing_balance_minor"),
+    balanceAsOf: text("balance_as_of"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

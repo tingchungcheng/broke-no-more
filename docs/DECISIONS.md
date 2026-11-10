@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-11-10 — A card payment is a repayment, and net worth uses the statement balance
+
+Context: a credit on a card statement, such as PAYMENT THANK YOU, was stored as income. Summing those rows would treat money the user paid onto the card as earnings. Net worth must not be the sum of transactions.
+
+Decision: OpenAI may classify a parsed row's direction and type. It does not set the confidence score, and a payment thank-you or payment received stays a repayment even if the model calls it income. Cash flow includes rows that still need review and leaves repayments and transfers out. Net worth is the latest statement balance on each account: card and loan balances are liabilities. Accounts with no balance are named and left out.
+
+Consequences: paying the card does not increase income. Net worth appears only after a closing balance is read.
+
 ## 2026-11-10 — The email subject chooses the password, and OpenAI extracts only unknown layouts
 
 Context: one institution can send a credit-card statement and a savings statement. Both match a calendar chip such as Hong Leong, and each file has its own password. A known CSV or text line can be read without a model. Other opened layouts cannot.

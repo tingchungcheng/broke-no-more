@@ -22,9 +22,14 @@ export type SpendingSlice = {
 
 const OMITTED_FROM_CASH_FLOW = new Set<TransactionType>(["TRANSFER", "REPAYMENT"]);
 
-function countsTowardCashFlow(row: CashFlowRow, currency: string): boolean {
+export type CashFlowOptions = {
+  includeNeedsReview?: boolean;
+};
+
+function countsTowardCashFlow(row: CashFlowRow, currency: string, options: CashFlowOptions): boolean {
+  const statusOk = row.status === "CONFIRMED" || (options.includeNeedsReview === true && row.status === "PENDING_REVIEW");
   return (
-    row.status === "CONFIRMED" &&
+    statusOk &&
     row.currency === currency &&
     !OMITTED_FROM_CASH_FLOW.has(row.transactionType) &&
     Number.isSafeInteger(row.amountMinor) &&
@@ -55,10 +60,14 @@ function monthsBetween(start: string, end: string): string[] {
   return months;
 }
 
-export function monthlyCashFlow(rows: readonly CashFlowRow[], currency: string): MonthlyCashFlow[] {
+export function monthlyCashFlow(
+  rows: readonly CashFlowRow[],
+  currency: string,
+  options: CashFlowOptions = {},
+): MonthlyCashFlow[] {
   const totals = new Map<string, MonthlyCashFlow>();
   for (const row of rows) {
-    if (!countsTowardCashFlow(row, currency)) continue;
+    if (!countsTowardCashFlow(row, currency, options)) continue;
     const month = monthKey(row.transactionDate);
     const current = totals.get(month) ?? { month, moneyInMinor: 0, moneyOutMinor: 0 };
     if (row.direction === "IN") current.moneyInMinor += row.amountMinor;
@@ -74,10 +83,14 @@ export function monthlyCashFlow(rows: readonly CashFlowRow[], currency: string):
   );
 }
 
-export function spendingByType(rows: readonly CashFlowRow[], currency: string): SpendingSlice[] {
+export function spendingByType(
+  rows: readonly CashFlowRow[],
+  currency: string,
+  options: CashFlowOptions = {},
+): SpendingSlice[] {
   const totals = new Map<TransactionType, number>();
   for (const row of rows) {
-    if (!countsTowardCashFlow(row, currency) || row.direction !== "OUT") continue;
+    if (!countsTowardCashFlow(row, currency, options) || row.direction !== "OUT") continue;
     totals.set(row.transactionType, (totals.get(row.transactionType) ?? 0) + row.amountMinor);
   }
   return [...totals.entries()]
@@ -85,10 +98,11 @@ export function spendingByType(rows: readonly CashFlowRow[], currency: string): 
     .sort((left, right) => right.amountMinor - left.amountMinor || left.transactionType.localeCompare(right.transactionType));
 }
 
-export function chartCurrencies(rows: readonly CashFlowRow[]): string[] {
+export function chartCurrencies(rows: readonly CashFlowRow[], options: CashFlowOptions = {}): string[] {
   const currencies = new Set<string>();
   for (const row of rows) {
-    if (row.status === "CONFIRMED" && !OMITTED_FROM_CASH_FLOW.has(row.transactionType)) {
+    const statusOk = row.status === "CONFIRMED" || (options.includeNeedsReview === true && row.status === "PENDING_REVIEW");
+    if (statusOk && !OMITTED_FROM_CASH_FLOW.has(row.transactionType)) {
       currencies.add(row.currency);
     }
   }

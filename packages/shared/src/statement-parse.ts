@@ -1,4 +1,4 @@
-import type { Direction } from "./constants";
+import type { Direction, TransactionType } from "./constants";
 import { parseDecimalToMinor } from "./money";
 
 export type ParsedStatementTransaction = {
@@ -7,7 +7,7 @@ export type ParsedStatementTransaction = {
   amountMinor: number;
   currency: string | null;
   direction: Direction;
-  transactionType: "EXPENSE" | "INCOME";
+  transactionType: TransactionType;
 };
 
 export type ParsedStatement = {

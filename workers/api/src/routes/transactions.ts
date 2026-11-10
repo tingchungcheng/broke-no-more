@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { transactions } from "@broke-no-more/database";
 import {
   assertDirectionMatchesType,
@@ -15,7 +16,7 @@ import { ApiError } from "../http/errors";
 import { readJson } from "../http/json";
 import { requireMutationCsrf, requireUser } from "../middleware/guards";
 import { findAccount } from "../repositories/accounts";
-import { deleteTransaction, findTransaction, listTransactions } from "../repositories/transactions";
+import { deleteTransaction, findTransaction, listTransactionsPage } from "../repositories/transactions";
 import { requireUuid } from "./ids";
 
 function presentTransaction(row: typeof transactions.$inferSelect) {
@@ -45,10 +46,17 @@ transactionRoutes.use("*", requireUser, requireMutationCsrf);
 transactionRoutes.get("/", async (c) => {
   const requestedAccountId = c.req.query("accountId");
   const accountId = requestedAccountId ? requireUuid(requestedAccountId) : undefined;
-  const rows = await listTransactions(getEnv(c).db, c.get("userId"), accountId);
+  const parsedPage = z.coerce.number().int().min(1).safeParse(c.req.query("page") ?? 1);
+  if (!parsedPage.success) throw new ApiError(400, "validation_error", "Page must be a positive number.");
+  const listed = await listTransactionsPage(getEnv(c).db, c.get("userId"), parsedPage.data, accountId);
   return c.json({
-    transactions: rows.slice(0, 100).map(presentTransaction),
-    truncated: rows.length > 100,
+    transactions: listed.rows.map(presentTransaction),
+    page: listed.page,
+    pageSize: listed.pageSize,
+    total: listed.total,
+    pageCount: listed.pageCount,
+    hasMore: listed.hasMore,
+    truncated: listed.hasMore,
   });
 });
 

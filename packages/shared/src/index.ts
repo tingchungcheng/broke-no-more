@@ -24,7 +24,12 @@ export {
   TRANSACTION_TYPE_LABELS,
 } from "./labels";
 export { chartCurrencies, monthlyCashFlow, spendingByType } from "./cash-flow";
-export type { CashFlowRow, MonthlyCashFlow, SpendingSlice } from "./cash-flow";
+export type { CashFlowOptions, CashFlowRow, MonthlyCashFlow, SpendingSlice } from "./cash-flow";
+export { closingBalanceFromText } from "./statement-balance";
+export { netWorthFromSnapshots } from "./net-worth";
+export type { NetWorthResult, WorthAccount, WorthSnapshot } from "./net-worth";
+export { reconcileStatementRow } from "./statement-classify";
+export type { StatementTypeSuggestion } from "./statement-classify";
 export { rollupDayStatus, statusFromScore, CONFIDENCE_STATUSES } from "./confidence";
 export type { ConfidenceStatus } from "./confidence";
 export { parseStatementDate, parseStatementText } from "./statement-parse";

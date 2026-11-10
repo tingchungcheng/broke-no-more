@@ -1,12 +1,4 @@
-import {
-  chartCurrencies,
-  formatMinor,
-  monthlyCashFlow,
-  spendingByType,
-  TRANSACTION_TYPE_LABELS,
-  type Transaction,
-} from "@broke-no-more/shared";
-import { useState } from "react";
+import { formatMinor, TRANSACTION_TYPE_LABELS, type MonthlyCashFlow, type SpendingSlice } from "@broke-no-more/shared";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card } from "@/components/ui/card";
 
@@ -22,20 +14,26 @@ function amountLabel(amountMinor: number, currency: string): string {
   return formatMinor(amountMinor, currency);
 }
 
-export function CashFlowCharts({ transactions, truncated }: { transactions: Transaction[]; truncated: boolean }) {
-  const currencies = chartCurrencies(transactions);
-  const [selected, setSelected] = useState(currencies[0] ?? "MYR");
-  const currency = currencies.includes(selected) ? selected : (currencies[0] ?? "MYR");
-  const months = monthlyCashFlow(transactions, currency);
-  const spending = spendingByType(transactions, currency);
+export function CashFlowCharts({
+  currencies,
+  months,
+  spending,
+  includesNeedsReview,
+}: {
+  currencies: string[];
+  months: MonthlyCashFlow[];
+  spending: SpendingSlice[];
+  includesNeedsReview: boolean;
+}) {
+  const currency = currencies[0] ?? "MYR";
 
   if (currencies.length === 0) {
     return (
       <Card>
         <h2 className="font-serif text-2xl">Cash flow</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          Confirmed income, expenses, and refunds will appear here. Transfers and repayments stay off this chart so they
-          are not treated as spending. Net worth is still not calculated.
+          Income, expenses, and refunds appear here, including statement rows that still need review. A card payment is a
+          repayment, not income, so it stays off this chart.
         </p>
       </Card>
     );
@@ -47,27 +45,10 @@ export function CashFlowCharts({ transactions, truncated }: { transactions: Tran
         <div>
           <h2 className="font-serif text-2xl">Cash flow</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Confirmed rows in {currency}. Transfers and repayments are omitted. These bars are not a net-worth figure.
+            {includesNeedsReview ? "Includes rows that still need review. " : ""}
+            Transfers and repayments are omitted, including a payment onto a credit card. These bars are not net worth.
           </p>
         </div>
-        {currencies.length > 1 ? (
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Chart currency">
-            {currencies.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={
-                  item === currency
-                    ? "rounded-full bg-moss px-3 py-1.5 text-sm text-paper"
-                    : "rounded-full border border-line px-3 py-1.5 text-sm"
-                }
-                onClick={() => setSelected(item)}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </div>
       <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
         <Card>
@@ -104,7 +85,7 @@ export function CashFlowCharts({ transactions, truncated }: { transactions: Tran
         <Card>
           <h3 className="font-medium">Spending by type</h3>
           {spending.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">No confirmed money out in {currency} yet.</p>
+            <p className="mt-4 text-sm text-muted">No spending in {currency} yet.</p>
           ) : (
             <div className="mt-4 h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -134,9 +115,6 @@ export function CashFlowCharts({ transactions, truncated }: { transactions: Tran
           )}
         </Card>
       </div>
-      {truncated ? (
-        <p className="text-sm text-muted">The chart uses the latest 100 transactions returned for this workspace.</p>
-      ) : null}
     </section>
   );
 }
