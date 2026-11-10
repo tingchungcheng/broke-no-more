@@ -289,7 +289,13 @@ export function CalendarPage() {
                     })
                       .then(async (result) => {
                         setNotice(
-                          `Checked ${result.inspected} messages between ${fromDate} and ${toDate}. Saved ${result.saved} new statements. ${result.alreadyKnown} were already saved.`,
+                          result.saved === 0 && result.alreadyKnown === 0
+                            ? `Checked ${result.inspected} messages between ${fromDate} and ${toDate}. No new statement emails matched your keywords.`
+                            : `Checked ${result.inspected} messages between ${fromDate} and ${toDate}. Added ${result.saved} new statement email${result.saved === 1 ? "" : "s"}${
+                                result.alreadyKnown > 0
+                                  ? `; skipped ${result.alreadyKnown} already in your workspace`
+                                  : ""
+                              }.`,
                         );
                         setScanStep(1);
                         await queryClient.invalidateQueries({ queryKey: ["calendar"] });
@@ -322,7 +328,7 @@ export function CalendarPage() {
         ) : null}
       </Card>
 
-      <StatementReadPanel keywords={stored.selected} />
+      <StatementReadPanel />
 
       <Card>
         <div className="flex items-center justify-between gap-3">

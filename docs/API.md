@@ -19,9 +19,9 @@ Base path: `/api/v1`. The session owns the user. A `userId` in the body or query
 | GET | `/gmail/callback` | Seals the refresh token and returns to settings |
 | POST | `/gmail/disconnect` | Revokes the token and deletes the sealed value |
 | POST | `/gmail/sync` | Signed-in user with Gmail connected. Body `{ "keywords": ["Hong Leong"], "fromDate": "YYYY-MM-DD", "toDate": "YYYY-MM-DD" }`. Range max 366 days. Stores statement subjects only |
-| POST | `/gmail/read` | Downloads PDF or CSV attachments for saved statement emails, opens a locked PDF with a saved password, and imports only a supported table |
+| POST | `/gmail/read` | Downloads PDF or CSV attachments, opens a locked PDF with the password whose phrase appears in the email subject, imports a supported table, and asks OpenAI only when that table reader finds no rows |
 | GET | `/statement-passwords` | Labels and account ids. The password is never returned |
-| PUT | `/statement-passwords` | Body `{ "label": "Hong Leong", "password": "...", "accountId": null }`. Seals the password |
+| PUT | `/statement-passwords` | Body `{ "label": "Hong Leong", "password": "...", "accountId": null }`, or `{ "accountId": "…", "labels": ["Hong Leong", "credit card"], "password": "..." }` (up to 3 labels; password optional when keywords already exist). Seals the password |
 | GET | `/calendar?month=2026-11` | Days in that month with a confidence status |
 | GET | `/auth/google` | Direct Google OIDC when Cognito is not configured |
 | GET | `/auth/google/callback` | Sets `bnm_session` and redirects to `/dashboard` |
@@ -69,7 +69,7 @@ Create body:
 
 ## Statements and sync jobs
 
-`GET /statements?page=1` returns up to 10 rows per page, newest first, with `total`, `pageCount`, and `hasMore`. `GET /statements/:id` and `GET /sync-jobs` return only the caller's rows. `POST /gmail/sync` searches the connected mailbox for those keywords, then keeps a message only when its subject says it is a statement. The saved row stores the Gmail message id, subject, sender, and Malaysia date. `POST /gmail/read` then downloads the attachment, seals it, and adds review transactions only for a supported CSV or text layout. A second scan of the same message does not create another row. Another scan within 15 seconds returns 429.
+`GET /statements?page=1&sort=receivedOn&order=desc` returns up to 10 rows per page with `total`, `pageCount`, `hasMore`, `sort`, and `order`. `sort` is one of `receivedOn`, `createdAt`, `subject`, `status`, `sender`. `order` is `asc` or `desc`. Default is received date, newest first. `GET /statements/:id` and `GET /sync-jobs` return only the caller's rows. `POST /gmail/sync` searches the connected mailbox for those keywords, then keeps a message only when its subject says it is a statement. The saved row stores the Gmail message id, subject, sender, and Malaysia date. `POST /gmail/read` then downloads the attachment, seals it, and adds review transactions for a supported CSV or text layout. If that reader finds no rows and an OpenAI key is set, the opened text is sent for extraction. The password and the Gmail token are not. A locked file is opened only with a password whose saved phrase appears in the subject. A second scan of the same message does not create another row. Another scan within 15 seconds returns 429.
 
 ## Health
 

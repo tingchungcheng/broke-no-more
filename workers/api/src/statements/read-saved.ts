@@ -1,15 +1,24 @@
 import { accounts, statementPasswords, statements, transactions } from "@broke-no-more/database";
-import { normalizeDescription, parseStatementText } from "@broke-no-more/shared";
+import { normalizeDescription, parseStatementText, rankStatementAccounts, type ParsedStatement } from "@broke-no-more/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { sha256Hex } from "../auth/crypto";
 import { decodeEncryptionKey, openSeal, sealString } from "../auth/seal";
 import type { Env } from "../env";
 import { downloadAttachment, fetchMessagePayload, findStatementAttachments } from "../gmail/attachments";
+import { extractStatementWithOpenAi } from "./openai-extract";
 import { extractPdfText } from "./pdf-text";
 import { statementStorageRoot, storeSealedStatement } from "./store";
 
 const MAX_BYTES = 8_000_000;
-const RETRY_ERRORS = ["password_required", "password_rejected", "no_attachment", "account_required", "currency_mismatch"];
+const RETRY_ERRORS = [
+  "password_required",
+  "password_rejected",
+  "subject_unmatched",
+  "no_attachment",
+  "account_required",
+  "currency_mismatch",
+  "unrecognized_layout",
+];
 
 export type ReadSavedResult = {
   checked: number;
@@ -27,17 +36,21 @@ async function openAttachment(
   bytes: Uint8Array,
   filename: string,
   passwords: string[],
-): Promise<{ ok: true; text: string } | { ok: false; error: "password_required" | "password_rejected" | "unreadable" }> {
+): Promise<
+  | { ok: true; text: string; password: string | null }
+  | { ok: false; error: "password_required" | "password_rejected" | "unreadable" }
+> {
   if (!filename.toLowerCase().endsWith(".pdf")) {
-    return { ok: true, text: new TextDecoder().decode(bytes) };
+    return { ok: true, text: new TextDecoder().decode(bytes), password: null };
   }
   const unlocked = await extractPdfText(bytes);
-  if (unlocked.ok || unlocked.error !== "password_required") return unlocked;
+  if (unlocked.ok) return { ok: true, text: unlocked.text, password: null };
+  if (unlocked.error !== "password_required") return unlocked;
   if (passwords.length === 0) return { ok: false, error: "password_required" };
   let rejected = false;
   for (const password of passwords) {
     const attempt = await extractPdfText(bytes, password);
-    if (attempt.ok) return attempt;
+    if (attempt.ok) return { ok: true, text: attempt.text, password };
     if (attempt.error === "password_rejected") rejected = true;
   }
   return { ok: false, error: rejected ? "password_rejected" : "password_required" };
@@ -63,7 +76,7 @@ export async function readSavedStatements(env: Env, userId: string, accessToken:
       and(
         eq(statements.userId, userId),
         eq(statements.source, "GMAIL"),
-        inArray(statements.status, ["DISCOVERED", "REVIEW_REQUIRED", "FAILED"]),
+        inArray(statements.status, ["DISCOVERED", "REVIEW_REQUIRED", "FAILED", "STORED"]),
       ),
     )
     .limit(40);
@@ -80,12 +93,28 @@ export async function readSavedStatements(env: Env, userId: string, accessToken:
   for (const statement of pending) {
     if (!statement.gmailMessageId) continue;
     result.checked += 1;
-    const keywords = (statement.matchedKeywords ?? "")
-      .split(",")
-      .map((keyword) => keyword.trim().toLowerCase())
-      .filter(Boolean);
-    const matches = openedPresets.filter((preset) => keywords.includes(preset.label.toLowerCase()));
-    const accountId = matches.find((preset) => preset.accountId)?.accountId ?? null;
+    const ranked = rankStatementAccounts(
+      statement.subject ?? "",
+      openedPresets.map((preset) => ({ label: preset.label, accountId: preset.accountId })),
+    );
+    const passwords: string[] = [];
+    const accountForPassword = new Map<string, string | null>();
+    for (const group of ranked) {
+      const member = openedPresets.find(
+        (preset) =>
+          preset.accountId === group.accountId &&
+          group.matchedLabels.some((label) => label.toLowerCase() === preset.label.toLowerCase()),
+      );
+      if (!member || accountForPassword.has(member.password)) continue;
+      accountForPassword.set(member.password, group.accountId);
+      passwords.push(member.password);
+    }
+    const accountForOpened = (password: string | null): string | null => {
+      if (password) return accountForPassword.get(password) ?? null;
+      const top = ranked[0];
+      if (!top || (ranked[1] && ranked[1].score === top.score)) return null;
+      return top.accountId;
+    };
     try {
       const payload = await fetchMessagePayload(accessToken, statement.gmailMessageId);
       const attachments = findStatementAttachments(payload ?? undefined);
@@ -99,15 +128,17 @@ export async function readSavedStatements(env: Env, userId: string, accessToken:
       for (const attachment of attachments) {
         const bytes = await downloadAttachment(accessToken, statement.gmailMessageId, attachment.attachmentId);
         if (!bytes || bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES) continue;
-        const textResult = await openAttachment(bytes, attachment.filename, matches.map((preset) => preset.password));
+        const textResult = await openAttachment(bytes, attachment.filename, passwords);
         if (!textResult.ok) {
           lock = textResult.error;
           continue;
         }
         opened = { filename: attachment.filename, text: textResult.text, bytes };
-        const parsed = parseStatementText(attachment.filename, textResult.text);
+        const parsed =
+          parseStatementText(attachment.filename, textResult.text) ??
+          (env.OPENAI_API_KEY ? await extractStatementWithOpenAi(env.OPENAI_API_KEY, textResult.text) : null);
         if (parsed) {
-          await finishParsed(env, key, result, statement, opened, parsed, accountId);
+          await finishParsed(env, key, result, statement, opened, parsed, accountForOpened(textResult.password));
           handled = true;
           break;
         }
@@ -124,7 +155,8 @@ export async function readSavedStatements(env: Env, userId: string, accessToken:
         result.filesStored += 1;
         result.unrecognized += 1;
       } else if (lock === "password_required" || lock === "password_rejected") {
-        await mark(env, statement.id, { status: "REVIEW_REQUIRED", errorCode: lock });
+        const errorCode = lock === "password_required" && openedPresets.length > 0 && ranked.length === 0 ? "subject_unmatched" : lock;
+        await mark(env, statement.id, { status: "REVIEW_REQUIRED", errorCode });
         result.locked += 1;
       } else {
         await mark(env, statement.id, { status: "FAILED", errorCode: lock ?? "read_failed" });
@@ -142,7 +174,7 @@ async function finishParsed(
   result: ReadSavedResult,
   statement: { id: string; userId: string },
   opened: OpenedFile,
-  parsed: NonNullable<ReturnType<typeof parseStatementText>>,
+  parsed: ParsedStatement,
   accountId: string | null,
 ) {
   await storeAndMark(env, key, statement.userId, statement.id, opened, {

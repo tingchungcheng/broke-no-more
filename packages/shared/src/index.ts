@@ -31,8 +31,11 @@ export { parseStatementDate, parseStatementText } from "./statement-parse";
 export type { ParsedStatement, ParsedStatementTransaction } from "./statement-parse";
 export {
   messageIsStatement,
+  MAX_ACCOUNT_STATEMENT_KEYWORDS,
+  normalizeAccountStatementKeywords,
   normalizeStatementKeyword,
   normalizeStatementKeywords,
+  rankStatementAccounts,
   receivedOnInMalaysia,
   monthDateBounds,
   receivedOnWithinRange,
@@ -40,7 +43,7 @@ export {
   validateStatementScanRange,
   SUGGESTED_STATEMENT_KEYWORDS,
 } from "./statement-search";
-export type { StatementScanRange } from "./statement-search";
+export type { RankedStatementAccount, StatementPasswordChoice, StatementScanRange } from "./statement-search";
 export { addMoney, formatMinor, minorExponent, MoneyError, parseDecimalToMinor, subtractMoney } from "./money";
 export type { Money } from "./money";
 export {

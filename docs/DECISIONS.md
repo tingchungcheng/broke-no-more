@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-11-10 — The email subject chooses the password, and OpenAI extracts only unknown layouts
+
+Context: one institution can send a credit-card statement and a savings statement. Both match a calendar chip such as Hong Leong, and each file has its own password. A known CSV or text line can be read without a model. Other opened layouts cannot.
+
+Decision: phrases saved on an account are matched against the email subject. The account with the longer match is tried first, and its sealed password is the one used. Passwords for phrases that are absent from the subject are not tried. OpenAI is called only after the file is open and the table reader finds no rows. The model may list transactions. It does not choose a password, decide that an email is a statement, or set the confidence score. Those rows stay in review. If the key is missing or the model returns nothing, the file stays unrecognized.
+
+Consequences: a credit-card subject can use a different password from a savings subject at the same bank. An unfamiliar statement can still produce rows to review.
+
 ## 2026-11-10 — Reading a statement uses a saved password and a supported table
 
 Context: a scan stores the email, and many statement PDFs are locked with a password the bank already gave the account holder. There is still no verified layout for a named bank.

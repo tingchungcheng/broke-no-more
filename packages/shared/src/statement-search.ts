@@ -1,3 +1,5 @@
+export const MAX_ACCOUNT_STATEMENT_KEYWORDS = 3;
+
 export const SUGGESTED_STATEMENT_KEYWORDS = [
   "RYT",
   "Hong Leong",
@@ -21,7 +23,7 @@ export function normalizeStatementKeyword(value: string): string | null {
     .replace(/\s+/g, " ")
     .replace(/^['"]+|['"]+$/g, "");
   if (keyword.length < 2 || keyword.length > 40) return null;
-  if (/[:(){}\\]/.test(keyword) || /[\u0000-\u001f]/.test(keyword)) return null;
+  if (/[:{}\\]/.test(keyword) || /[\u0000-\u001f]/.test(keyword)) return null;
   return keyword;
 }
 
@@ -38,6 +40,10 @@ export function normalizeStatementKeywords(values: string[]): string[] {
     if (keywords.length === 12) break;
   }
   return keywords;
+}
+
+export function normalizeAccountStatementKeywords(values: string[]): string[] {
+  return normalizeStatementKeywords(values).slice(0, MAX_ACCOUNT_STATEMENT_KEYWORDS);
 }
 
 export type StatementScanRange = {
@@ -95,6 +101,44 @@ function containsPhrase(haystack: string, phrase: string): boolean {
   return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`, "i").test(
     haystack,
   );
+}
+
+export type StatementPasswordChoice = {
+  label: string;
+  accountId: string | null;
+};
+
+export type RankedStatementAccount = {
+  accountId: string | null;
+  score: number;
+  matchedLabels: string[];
+};
+
+function keywordVariants(label: string): string[] {
+  const variants = [label];
+  for (const match of label.matchAll(/\(([^)]+)\)/g)) {
+    const inner = match[1]?.trim() ?? "";
+    if (inner.length >= 2) variants.push(inner);
+  }
+  return variants;
+}
+
+export function rankStatementAccounts(subject: string, presets: StatementPasswordChoice[]): RankedStatementAccount[] {
+  const groups = new Map<string, { accountId: string | null; labels: string[] }>();
+  for (const preset of presets) {
+    const key = preset.accountId ?? `label:${preset.label.toLowerCase()}`;
+    const group = groups.get(key) ?? { accountId: preset.accountId, labels: [] };
+    group.labels.push(preset.label);
+    groups.set(key, group);
+  }
+  const ranked: RankedStatementAccount[] = [];
+  for (const group of groups.values()) {
+    const matchedLabels = group.labels.filter((label) => keywordVariants(label).some((variant) => containsPhrase(subject, variant)));
+    if (matchedLabels.length === 0) continue;
+    const score = matchedLabels.reduce((total, label) => total + label.length, 0);
+    ranked.push({ accountId: group.accountId, score, matchedLabels });
+  }
+  return ranked.sort((left, right) => right.score - left.score || right.matchedLabels.length - left.matchedLabels.length);
 }
 
 export function messageIsStatement(input: {

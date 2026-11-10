@@ -18,3 +18,22 @@ export async function findAccount(db: Database, userId: string, accountId: strin
 export async function deleteAccount(db: Database, userId: string, accountId: string) {
   await db.delete(accounts).where(and(eq(accounts.userId, userId), eq(accounts.id, accountId)));
 }
+
+export async function updateAccount(
+  db: Database,
+  userId: string,
+  accountId: string,
+  values: {
+    type: (typeof accounts.$inferInsert)["type"];
+    institution: string | null;
+    displayName: string;
+    currency: string;
+    maskedIdentifier: string | null;
+    updatedAt: string;
+  },
+) {
+  await db
+    .update(accounts)
+    .set(values)
+    .where(and(eq(accounts.userId, userId), eq(accounts.id, accountId)));
+}

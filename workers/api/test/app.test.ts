@@ -16,10 +16,22 @@ import { app } from "../src/app";
 import type { Database } from "../src/db";
 import type { Env } from "../src/env";
 
-const migrationsDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "../../../packages/database/migrations");
-const migration = readFileSync(resolve(migrationsDirectory, "0001_phase0.sql"), "utf8");
-const statementDiscovery = readFileSync(resolve(migrationsDirectory, "0002_statement_discovery.sql"), "utf8");
-const statementPasswordsMigration = readFileSync(resolve(migrationsDirectory, "0003_statement_passwords.sql"), "utf8");
+const migrationsDirectory = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../packages/database/migrations",
+);
+const migration = readFileSync(
+  resolve(migrationsDirectory, "0001_phase0.sql"),
+  "utf8",
+);
+const statementDiscovery = readFileSync(
+  resolve(migrationsDirectory, "0002_statement_discovery.sql"),
+  "utf8",
+);
+const statementPasswordsMigration = readFileSync(
+  resolve(migrationsDirectory, "0003_statement_passwords.sql"),
+  "utf8",
+);
 
 async function testEnv(overrides: Partial<Env> = {}): Promise<Env> {
   const client = new PGlite();
@@ -42,7 +54,8 @@ async function testEnv(overrides: Partial<Env> = {}): Promise<Env> {
 function cookiePair(response: Response, name: string): string {
   const cookies = response.headers.getSetCookie();
   const match = cookies.find((cookie) => cookie.startsWith(`${name}=`));
-  if (!match) throw new Error(`Missing ${name} cookie. Saw: ${cookies.join(" | ")}`);
+  if (!match)
+    throw new Error(`Missing ${name} cookie. Saw: ${cookies.join(" | ")}`);
   return match.split(";")[0] ?? match;
 }
 
@@ -57,11 +70,22 @@ async function devLogin(env: Env, persona: "alex" | "blair") {
     env,
   );
   expect(response.status).toBe(200);
-  const body = (await response.json()) as { csrfToken: string; user: { id: string; email: string } };
-  return { cookie: cookiePair(response, "bnm_session"), csrfToken: body.csrfToken, user: body.user };
+  const body = (await response.json()) as {
+    csrfToken: string;
+    user: { id: string; email: string };
+  };
+  return {
+    cookie: cookiePair(response, "bnm_session"),
+    csrfToken: body.csrfToken,
+    user: body.user,
+  };
 }
 
-function authed(cookie: string, csrfToken?: string, extra?: ConstructorParameters<typeof Headers>[0]): Headers {
+function authed(
+  cookie: string,
+  csrfToken?: string,
+  extra?: ConstructorParameters<typeof Headers>[0],
+): Headers {
   const headers = new Headers(extra);
   headers.set("cookie", cookie);
   headers.set("x-broke-no-more", "1");
@@ -69,12 +93,18 @@ function authed(cookie: string, csrfToken?: string, extra?: ConstructorParameter
   return headers;
 }
 
-async function createAccount(env: Env, session: Awaited<ReturnType<typeof devLogin>>, displayName: string) {
+async function createAccount(
+  env: Env,
+  session: Awaited<ReturnType<typeof devLogin>>,
+  displayName: string,
+) {
   const response = await app.request(
     "/api/v1/accounts",
     {
       method: "POST",
-      headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+      headers: authed(session.cookie, session.csrfToken, {
+        "content-type": "application/json",
+      }),
       body: JSON.stringify({ type: "CASH", displayName, currency: "MYR" }),
     },
     env,
@@ -109,8 +139,14 @@ describe("phase 0 API", () => {
       "/api/v1/accounts",
       {
         method: "POST",
-        headers: authed(session.cookie, undefined, { "content-type": "application/json" }),
-        body: JSON.stringify({ type: "CASH", displayName: "Wallet", currency: "MYR" }),
+        headers: authed(session.cookie, undefined, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          type: "CASH",
+          displayName: "Wallet",
+          currency: "MYR",
+        }),
       },
       env,
     );
@@ -118,7 +154,11 @@ describe("phase 0 API", () => {
 
     const headerless = await app.request(
       "/api/v1/auth/dev-login",
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ persona: "alex" }) },
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ persona: "alex" }),
+      },
       env,
     );
     expect(headerless.status).toBe(403);
@@ -156,7 +196,11 @@ describe("phase 0 API", () => {
   });
 
   it("hides dev sign-in outside development and test", async () => {
-    const env = await testEnv({ ENVIRONMENT: "production", PUBLIC_APP_URL: "https://ledger.example.com", DEV_AUTH_ENABLED: "true" });
+    const env = await testEnv({
+      ENVIRONMENT: "production",
+      PUBLIC_APP_URL: "https://ledger.example.com",
+      DEV_AUTH_ENABLED: "true",
+    });
     const response = await app.request(
       "/api/v1/auth/dev-login",
       {
@@ -168,7 +212,9 @@ describe("phase 0 API", () => {
     );
     expect(response.status).toBe(404);
     const config = await app.request("/api/v1/auth/config", {}, env);
-    await expect(config.json()).resolves.toMatchObject({ devAuthEnabled: false });
+    await expect(config.json()).resolves.toMatchObject({
+      devAuthEnabled: false,
+    });
   });
 
   it("rejects a client-supplied user id, a full card number, and a mismatched direction", async () => {
@@ -178,8 +224,15 @@ describe("phase 0 API", () => {
       "/api/v1/accounts",
       {
         method: "POST",
-        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ type: "CASH", displayName: "Wallet", currency: "MYR", userId: session.user.id }),
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          type: "CASH",
+          displayName: "Wallet",
+          currency: "MYR",
+          userId: session.user.id,
+        }),
       },
       env,
     );
@@ -189,7 +242,9 @@ describe("phase 0 API", () => {
       "/api/v1/accounts",
       {
         method: "POST",
-        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
         body: JSON.stringify({
           type: "CREDIT_CARD",
           displayName: "Card",
@@ -206,7 +261,9 @@ describe("phase 0 API", () => {
       "/api/v1/transactions",
       {
         method: "POST",
-        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
         body: JSON.stringify({
           accountId: account.id,
           transactionDate: "2026-11-10",
@@ -225,7 +282,9 @@ describe("phase 0 API", () => {
       `/api/v1/accounts/${account.id}`,
       {
         method: "PATCH",
-        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
         body: JSON.stringify({
           type: "SAVINGS_ACCOUNT",
           displayName: "Cash jar",
@@ -257,7 +316,9 @@ describe("phase 0 API", () => {
       "/api/v1/transactions",
       {
         method: "POST",
-        headers: authed(alex.cookie, alex.csrfToken, { "content-type": "application/json" }),
+        headers: authed(alex.cookie, alex.csrfToken, {
+          "content-type": "application/json",
+        }),
         body: JSON.stringify({
           accountId: account.id,
           transactionDate: "2026-11-10",
@@ -272,25 +333,53 @@ describe("phase 0 API", () => {
       env,
     );
     expect(created.status).toBe(201);
-    const transaction = ((await created.json()) as { transaction: { id: string; amountMinor: number; description: string } }).transaction;
+    const transaction = (
+      (await created.json()) as {
+        transaction: { id: string; amountMinor: number; description: string };
+      }
+    ).transaction;
     expect(transaction.amountMinor).toBe(850);
     expect(transaction.description).toBe("Coffee");
 
-    const blairAccounts = await app.request("/api/v1/accounts", { headers: authed(blair.cookie) }, env);
-    await expect(blairAccounts.json()).resolves.toEqual({ accounts: [], truncated: false });
-    const hiddenAccount = await app.request(`/api/v1/accounts/${account.id}`, { headers: authed(blair.cookie) }, env);
+    const blairAccounts = await app.request(
+      "/api/v1/accounts",
+      { headers: authed(blair.cookie) },
+      env,
+    );
+    await expect(blairAccounts.json()).resolves.toEqual({
+      accounts: [],
+      truncated: false,
+    });
+    const hiddenAccount = await app.request(
+      `/api/v1/accounts/${account.id}`,
+      { headers: authed(blair.cookie) },
+      env,
+    );
     expect(hiddenAccount.status).toBe(404);
-    const hiddenTransaction = await app.request(`/api/v1/transactions/${transaction.id}`, { headers: authed(blair.cookie) }, env);
+    const hiddenTransaction = await app.request(
+      `/api/v1/transactions/${transaction.id}`,
+      { headers: authed(blair.cookie) },
+      env,
+    );
     expect(hiddenTransaction.status).toBe(404);
 
-    const probed = await app.request(`/api/v1/accounts?userId=${alex.user.id}`, { headers: authed(blair.cookie) }, env);
-    await expect(probed.json()).resolves.toEqual({ accounts: [], truncated: false });
+    const probed = await app.request(
+      `/api/v1/accounts?userId=${alex.user.id}`,
+      { headers: authed(blair.cookie) },
+      env,
+    );
+    await expect(probed.json()).resolves.toEqual({
+      accounts: [],
+      truncated: false,
+    });
 
     const stolen = await app.request(
       "/api/v1/transactions",
       {
         method: "POST",
-        headers: authed(blair.cookie, blair.csrfToken, { "content-type": "application/json" }),
+        headers: authed(blair.cookie, blair.csrfToken, {
+          "content-type": "application/json",
+        }),
         body: JSON.stringify({
           accountId: account.id,
           transactionDate: "2026-11-10",
@@ -305,9 +394,17 @@ describe("phase 0 API", () => {
     );
     expect(stolen.status).toBe(404);
 
-    const removed = await app.request(`/api/v1/accounts/${account.id}`, { method: "DELETE", headers: authed(blair.cookie, blair.csrfToken) }, env);
+    const removed = await app.request(
+      `/api/v1/accounts/${account.id}`,
+      { method: "DELETE", headers: authed(blair.cookie, blair.csrfToken) },
+      env,
+    );
     expect(removed.status).toBe(404);
-    const stillThere = await app.request(`/api/v1/accounts/${account.id}`, { headers: authed(alex.cookie) }, env);
+    const stillThere = await app.request(
+      `/api/v1/accounts/${account.id}`,
+      { headers: authed(alex.cookie) },
+      env,
+    );
     expect(stillThere.status).toBe(200);
 
     const now = new Date().toISOString();
@@ -322,7 +419,11 @@ describe("phase 0 API", () => {
       values (${syncId}, ${alex.user.id}, 'gmail_sync', 'pending', 0, ${now}, ${now})
     `);
 
-    const blairStatements = await app.request("/api/v1/statements", { headers: authed(blair.cookie) }, env);
+    const blairStatements = await app.request(
+      "/api/v1/statements",
+      { headers: authed(blair.cookie) },
+      env,
+    );
     await expect(blairStatements.json()).resolves.toMatchObject({
       statements: [],
       page: 1,
@@ -331,12 +432,35 @@ describe("phase 0 API", () => {
       pageCount: 0,
       hasMore: false,
     });
-    expect((await app.request(`/api/v1/statements/${statementId}`, { headers: authed(blair.cookie) }, env)).status).toBe(404);
-    const alexStatements = await app.request("/api/v1/statements", { headers: authed(alex.cookie) }, env);
-    const alexBody = (await alexStatements.json()) as { statements: { id: string }[] };
-    expect(alexBody.statements.map((statement) => statement.id)).toEqual([statementId]);
-    const blairJobs = await app.request("/api/v1/sync-jobs", { headers: authed(blair.cookie) }, env);
-    await expect(blairJobs.json()).resolves.toEqual({ syncJobs: [], truncated: false });
+    expect(
+      (
+        await app.request(
+          `/api/v1/statements/${statementId}`,
+          { headers: authed(blair.cookie) },
+          env,
+        )
+      ).status,
+    ).toBe(404);
+    const alexStatements = await app.request(
+      "/api/v1/statements",
+      { headers: authed(alex.cookie) },
+      env,
+    );
+    const alexBody = (await alexStatements.json()) as {
+      statements: { id: string }[];
+    };
+    expect(alexBody.statements.map((statement) => statement.id)).toEqual([
+      statementId,
+    ]);
+    const blairJobs = await app.request(
+      "/api/v1/sync-jobs",
+      { headers: authed(blair.cookie) },
+      env,
+    );
+    await expect(blairJobs.json()).resolves.toEqual({
+      syncJobs: [],
+      truncated: false,
+    });
 
     await expect(
       env.db.execute(sql`
@@ -353,27 +477,46 @@ describe("phase 0 API", () => {
 
   it("rejects a foreign origin and ends a session on logout", async () => {
     const env = await testEnv();
-    const origin = await app.request("/api/v1/health", { headers: { origin: "https://evil.example" } }, env);
+    const origin = await app.request(
+      "/api/v1/health",
+      { headers: { origin: "https://evil.example" } },
+      env,
+    );
     expect(origin.status).toBe(403);
 
     const session = await devLogin(env, "alex");
-    const loggedOut = await app.request("/api/v1/auth/logout", { method: "POST", headers: authed(session.cookie, session.csrfToken) }, env);
+    const loggedOut = await app.request(
+      "/api/v1/auth/logout",
+      { method: "POST", headers: authed(session.cookie, session.csrfToken) },
+      env,
+    );
     expect(loggedOut.status).toBe(204);
-    const me = await app.request("/api/v1/auth/me", { headers: authed(session.cookie) }, env);
+    const me = await app.request(
+      "/api/v1/auth/me",
+      { headers: authed(session.cookie) },
+      env,
+    );
     expect(me.status).toBe(401);
   });
 
   it("starts Google sign-in with identity scopes only", async () => {
-    const env = await testEnv({ GOOGLE_CLIENT_ID: "test-client-id", GOOGLE_CLIENT_SECRET: "test-client-secret" });
+    const env = await testEnv({
+      GOOGLE_CLIENT_ID: "test-client-id",
+      GOOGLE_CLIENT_SECRET: "test-client-secret",
+    });
     const response = await app.request("/api/v1/auth/google", {}, env);
     expect(response.status).toBe(302);
     const location = new URL(response.headers.get("location") ?? "");
-    expect(`${location.origin}${location.pathname}`).toBe("https://accounts.google.com/o/oauth2/v2/auth");
+    expect(`${location.origin}${location.pathname}`).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
     expect(location.searchParams.get("scope")).toBe("openid email profile");
     expect(location.searchParams.get("include_granted_scopes")).toBe("false");
     expect(location.searchParams.has("access_type")).toBe(false);
     expect(location.toString().toLowerCase()).not.toContain("gmail");
-    expect(location.searchParams.get("redirect_uri")).toBe("http://localhost:5173/api/v1/auth/google/callback");
+    expect(location.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:5173/api/v1/auth/google/callback",
+    );
   });
 
   it("sends the Cognito hosted UI to Google with identity scopes only", async () => {
@@ -390,34 +533,52 @@ describe("phase 0 API", () => {
     );
     expect(location.searchParams.get("scope")).toBe("openid email profile");
     expect(location.searchParams.get("identity_provider")).toBe("Google");
-    expect(location.searchParams.get("redirect_uri")).toBe("http://localhost:5173/api/v1/auth/cognito/callback");
+    expect(location.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:5173/api/v1/auth/cognito/callback",
+    );
     expect(location.searchParams.has("access_type")).toBe(false);
     expect(location.toString().toLowerCase()).not.toContain("gmail");
   });
 
   it("rejects a Google callback whose state cookie is missing without calling Google", async () => {
-    const env = await testEnv({ GOOGLE_CLIENT_ID: "test-client-id", GOOGLE_CLIENT_SECRET: "test-client-secret" });
+    const env = await testEnv({
+      GOOGLE_CLIENT_ID: "test-client-id",
+      GOOGLE_CLIENT_SECRET: "test-client-secret",
+    });
     const fetchMock = vi.fn(() => {
       throw new Error("Google should not be called");
     });
     vi.stubGlobal("fetch", fetchMock);
-    const response = await app.request("/api/v1/auth/google/callback?code=abc&state=nope", {}, env);
+    const response = await app.request(
+      "/api/v1/auth/google/callback?code=abc&state=nope",
+      {},
+      env,
+    );
     expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("http://localhost:5173/login?error=google_auth_failed");
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:5173/login?error=google_auth_failed",
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("signs a user in from a verified Google id token", async () => {
-    const env = await testEnv({ GOOGLE_CLIENT_ID: "test-client-id", GOOGLE_CLIENT_SECRET: "test-client-secret" });
+    const env = await testEnv({
+      GOOGLE_CLIENT_ID: "test-client-id",
+      GOOGLE_CLIENT_SECRET: "test-client-secret",
+    });
     const start = await app.request("/api/v1/auth/google", {}, env);
     const location = new URL(start.headers.get("location") ?? "");
     const oauth = await readSignedValue<OauthState>(
-      decodeURIComponent(cookiePair(start, "bnm_oauth").slice("bnm_oauth=".length)),
+      decodeURIComponent(
+        cookiePair(start, "bnm_oauth").slice("bnm_oauth=".length),
+      ),
       env.SESSION_SECRET ?? "",
     );
     expect(oauth.state).toBe(location.searchParams.get("state"));
 
-    const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true });
+    const { privateKey, publicKey } = await generateKeyPair("RS256", {
+      extractable: true,
+    });
     const jwk = await exportJWK(publicKey);
     jwk.kid = "test-key";
     jwk.alg = "RS256";
@@ -437,17 +598,23 @@ describe("phase 0 API", () => {
       .setExpirationTime("2h")
       .sign(privateKey);
 
-    vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-      const url = String(input);
-      if (url.startsWith("https://oauth2.googleapis.com/token")) {
-        expect(String(init?.body)).toContain(oauth.verifier);
-        return Response.json({ id_token: idToken });
-      }
-      if (url.startsWith("https://www.googleapis.com/oauth2/v3/certs")) {
-        return Response.json({ keys: [jwk] });
-      }
-      throw new Error(`Unexpected fetch ${url}`);
-    });
+    vi.stubGlobal(
+      "fetch",
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        const url = String(input);
+        if (url.startsWith("https://oauth2.googleapis.com/token")) {
+          expect(String(init?.body)).toContain(oauth.verifier);
+          return Response.json({ id_token: idToken });
+        }
+        if (url.startsWith("https://www.googleapis.com/oauth2/v3/certs")) {
+          return Response.json({ keys: [jwk] });
+        }
+        throw new Error(`Unexpected fetch ${url}`);
+      },
+    );
 
     const callback = await app.request(
       `/api/v1/auth/google/callback?code=test-code&state=${encodeURIComponent(oauth.state)}`,
@@ -455,12 +622,25 @@ describe("phase 0 API", () => {
       env,
     );
     expect(callback.status).toBe(302);
-    expect(callback.headers.get("location")).toBe("http://localhost:5173/dashboard");
+    expect(callback.headers.get("location")).toBe(
+      "http://localhost:5173/dashboard",
+    );
 
-    const me = await app.request("/api/v1/auth/me", { headers: { cookie: cookiePair(callback, "bnm_session") } }, env);
+    const me = await app.request(
+      "/api/v1/auth/me",
+      { headers: { cookie: cookiePair(callback, "bnm_session") } },
+      env,
+    );
     expect(me.status).toBe(200);
-    const body = (await me.json()) as { user: { email: string; name: string; pictureUrl: string | null }; gmailConnected: boolean };
-    expect(body.user).toMatchObject({ email: "casey@example.com", name: "Casey Rahman", pictureUrl: null });
+    const body = (await me.json()) as {
+      user: { email: string; name: string; pictureUrl: string | null };
+      gmailConnected: boolean;
+    };
+    expect(body.user).toMatchObject({
+      email: "casey@example.com",
+      name: "Casey Rahman",
+      pictureUrl: null,
+    });
     expect(body.gmailConnected).toBe(false);
   });
 
@@ -472,47 +652,78 @@ describe("phase 0 API", () => {
       TOKEN_ENCRYPTION_KEY: encryptionKey,
     });
     const session = await devLogin(env, "alex");
-    const start = await app.request("/api/v1/gmail/connect", { headers: { cookie: session.cookie } }, env);
+    const start = await app.request(
+      "/api/v1/gmail/connect",
+      { headers: { cookie: session.cookie } },
+      env,
+    );
     expect(start.status).toBe(302);
     const location = new URL(start.headers.get("location") ?? "");
     expect(location.origin).toBe("https://accounts.google.com");
-    expect(location.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly");
+    expect(location.searchParams.get("scope")).toBe(
+      "https://www.googleapis.com/auth/gmail.readonly",
+    );
     expect(location.searchParams.get("include_granted_scopes")).toBe("false");
-    expect(location.searchParams.get("redirect_uri")).toBe("http://localhost:5173/api/v1/gmail/callback");
+    expect(location.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:5173/api/v1/gmail/callback",
+    );
     expect(location.searchParams.get("scope")).not.toContain("openid");
 
     const oauth = await readSignedValue<OauthState>(
-      decodeURIComponent(cookiePair(start, "bnm_gmail").slice("bnm_gmail=".length)),
+      decodeURIComponent(
+        cookiePair(start, "bnm_gmail").slice("bnm_gmail=".length),
+      ),
       env.SESSION_SECRET ?? "",
     );
     vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0]) => {
       const url = String(input);
       if (url.startsWith("https://oauth2.googleapis.com/token")) {
-        return Response.json({ refresh_token: "refresh-secret", access_token: "access-secret" });
+        return Response.json({
+          refresh_token: "refresh-secret",
+          access_token: "access-secret",
+        });
       }
-      if (url.startsWith("https://gmail.googleapis.com/gmail/v1/users/me/profile")) {
+      if (
+        url.startsWith("https://gmail.googleapis.com/gmail/v1/users/me/profile")
+      ) {
         return Response.json({ emailAddress: "alex.mailbox@example.com" });
       }
-      if (url.startsWith("https://oauth2.googleapis.com/revoke")) return new Response(null, { status: 200 });
+      if (url.startsWith("https://oauth2.googleapis.com/revoke"))
+        return new Response(null, { status: 200 });
       throw new Error(`Unexpected fetch ${url}`);
     });
 
     const callback = await app.request(
       `/api/v1/gmail/callback?code=test-code&state=${encodeURIComponent(oauth.state)}`,
-      { headers: { cookie: `${session.cookie}; ${cookiePair(start, "bnm_gmail")}` } },
+      {
+        headers: {
+          cookie: `${session.cookie}; ${cookiePair(start, "bnm_gmail")}`,
+        },
+      },
       env,
     );
     expect(callback.status).toBe(302);
-    expect(callback.headers.get("location")).toBe("http://localhost:5173/settings/connections");
+    expect(callback.headers.get("location")).toBe(
+      "http://localhost:5173/settings/connections",
+    );
 
     const stored = await env.db.select().from(schema.oauthConnections);
     expect(stored).toHaveLength(1);
     expect(stored[0]?.encryptedRefreshToken).not.toContain("refresh-secret");
     const key = decodeEncryptionKey(encryptionKey);
     expect(key).not.toBeNull();
-    expect(await openSeal(key ?? new Uint8Array(), stored[0]?.encryptedRefreshToken ?? "")).toBe("refresh-secret");
+    expect(
+      await openSeal(
+        key ?? new Uint8Array(),
+        stored[0]?.encryptedRefreshToken ?? "",
+      ),
+    ).toBe("refresh-secret");
 
-    const me = await app.request("/api/v1/auth/me", { headers: { cookie: session.cookie } }, env);
+    const me = await app.request(
+      "/api/v1/auth/me",
+      { headers: { cookie: session.cookie } },
+      env,
+    );
     await expect(me.json()).resolves.toMatchObject({ gmailConnected: true });
 
     const disconnect = await app.request(
@@ -544,7 +755,10 @@ describe("phase 0 API", () => {
       provider: "gmail",
       status: "connected",
       scopes: "https://www.googleapis.com/auth/gmail.readonly",
-      encryptedRefreshToken: await sealString(key ?? new Uint8Array(), "refresh-secret"),
+      encryptedRefreshToken: await sealString(
+        key ?? new Uint8Array(),
+        "refresh-secret",
+      ),
       encryptionKeyVersion: "v1",
       connectedAt: now,
       createdAt: now,
@@ -557,7 +771,11 @@ describe("phase 0 API", () => {
       if (url.startsWith("https://oauth2.googleapis.com/token")) {
         return Response.json({ access_token: "access-secret" });
       }
-      if (url.startsWith("https://gmail.googleapis.com/gmail/v1/users/me/messages?")) {
+      if (
+        url.startsWith(
+          "https://gmail.googleapis.com/gmail/v1/users/me/messages?",
+        )
+      ) {
         seenQueries.push(new URL(url).searchParams.get("q") ?? "");
         return Response.json({
           messages: [{ id: "statement-message" }, { id: "promo-message" }],
@@ -569,7 +787,10 @@ describe("phase 0 API", () => {
           internalDate: String(Date.UTC(2026, 10, 10, 2, 0)),
           payload: {
             headers: [
-              { name: "Subject", value: "Your Hong Leong e-Statement for October" },
+              {
+                name: "Subject",
+                value: "Your Hong Leong e-Statement for October",
+              },
               { name: "From", value: "Hong Leong <notices@example.com>" },
             ],
           },
@@ -594,13 +815,23 @@ describe("phase 0 API", () => {
       "/api/v1/gmail/sync",
       {
         method: "POST",
-        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ keywords: ["Hong Leong", "subject:bank"], fromDate: "2026-11-01", toDate: "2026-11-30" }),
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          keywords: ["Hong Leong", "subject:bank"],
+          fromDate: "2026-11-01",
+          toDate: "2026-11-30",
+        }),
       },
       env,
     );
     expect(sync.status).toBe(200);
-    await expect(sync.json()).resolves.toEqual({ inspected: 2, saved: 1, alreadyKnown: 0 });
+    await expect(sync.json()).resolves.toEqual({
+      inspected: 2,
+      saved: 1,
+      alreadyKnown: 0,
+    });
     expect(seenQueries[0]).toContain("subject:statement");
     expect(seenQueries[0]).toContain('"Hong Leong"');
     expect(seenQueries[0]).not.toContain("subject:bank");
@@ -624,27 +855,48 @@ describe("phase 0 API", () => {
       "/api/v1/gmail/sync",
       {
         method: "POST",
-        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ keywords: ["Hong Leong"], fromDate: "2026-11-01", toDate: "2026-11-30" }),
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          keywords: ["Hong Leong"],
+          fromDate: "2026-11-01",
+          toDate: "2026-11-30",
+        }),
       },
       env,
     );
     expect(tooSoon.status).toBe(429);
 
-    await env.db.execute(sql`update sync_jobs set started_at = '2020-01-01T00:00:00.000Z'`);
+    await env.db.execute(
+      sql`update sync_jobs set started_at = '2020-01-01T00:00:00.000Z'`,
+    );
     const again = await app.request(
       "/api/v1/gmail/sync",
       {
         method: "POST",
-        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ keywords: ["Hong Leong"], fromDate: "2026-11-01", toDate: "2026-11-30" }),
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          keywords: ["Hong Leong"],
+          fromDate: "2026-11-01",
+          toDate: "2026-11-30",
+        }),
       },
       env,
     );
     expect(again.status).toBe(200);
-    await expect(again.json()).resolves.toMatchObject({ saved: 0, alreadyKnown: 1 });
+    await expect(again.json()).resolves.toMatchObject({
+      saved: 0,
+      alreadyKnown: 1,
+    });
 
-    const blairStatements = await app.request("/api/v1/statements", { headers: authed(blair.cookie) }, env);
+    const blairStatements = await app.request(
+      "/api/v1/statements",
+      { headers: authed(blair.cookie) },
+      env,
+    );
     await expect(blairStatements.json()).resolves.toMatchObject({
       statements: [],
       page: 1,
@@ -653,14 +905,24 @@ describe("phase 0 API", () => {
       pageCount: 0,
       hasMore: false,
     });
-    const alexStatements = await app.request("/api/v1/statements", { headers: authed(session.cookie) }, env);
-    const listed = (await alexStatements.json()) as { statements: { subject: string; matchedKeywords: string[] }[] };
+    const alexStatements = await app.request(
+      "/api/v1/statements",
+      { headers: authed(session.cookie) },
+      env,
+    );
+    const listed = (await alexStatements.json()) as {
+      statements: { subject: string; matchedKeywords: string[] }[];
+    };
     expect(listed.statements[0]).toMatchObject({
       subject: "Your Hong Leong e-Statement for October",
       matchedKeywords: ["Hong Leong"],
     });
 
-    const calendar = await app.request("/api/v1/calendar?month=2026-11", { headers: authed(session.cookie) }, env);
+    const calendar = await app.request(
+      "/api/v1/calendar?month=2026-11",
+      { headers: authed(session.cookie) },
+      env,
+    );
     await expect(calendar.json()).resolves.toMatchObject({
       month: "2026-11",
       days: [{ date: "2026-11-10", status: "needs_review" }],
@@ -686,7 +948,10 @@ describe("phase 0 API", () => {
       provider: "gmail",
       status: "connected",
       scopes: "https://www.googleapis.com/auth/gmail.readonly",
-      encryptedRefreshToken: await sealString(key ?? new Uint8Array(), "refresh-secret"),
+      encryptedRefreshToken: await sealString(
+        key ?? new Uint8Array(),
+        "refresh-secret",
+      ),
       encryptionKeyVersion: "v1",
       connectedAt: now,
       createdAt: now,
@@ -710,45 +975,162 @@ describe("phase 0 API", () => {
       "/api/v1/statement-passwords",
       {
         method: "PUT",
-        headers: authed(session.cookie, session.csrfToken, { "content-type": "application/json" }),
-        body: JSON.stringify({ label: "Hong Leong", password: "statement-pass", accountId: account.id }),
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          label: "Hong Leong",
+          password: "statement-pass",
+          accountId: account.id,
+        }),
       },
       env,
     );
     expect(saved.status).toBe(201);
     expect(JSON.stringify(await saved.json())).not.toContain("statement-pass");
-    const listedPasswords = await app.request("/api/v1/statement-passwords", { headers: authed(session.cookie) }, env);
-    expect(JSON.stringify(await listedPasswords.json())).not.toContain("statement-pass");
+    const relabeled = await app.request(
+      "/api/v1/statement-passwords",
+      {
+        method: "PUT",
+        headers: authed(session.cookie, session.csrfToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          accountId: account.id,
+          labels: ["Hong Leong", "credit card"],
+        }),
+      },
+      env,
+    );
+    expect(relabeled.status).toBe(200);
+    await expect(relabeled.json()).resolves.toMatchObject({
+      accountId: account.id,
+      labels: ["Hong Leong", "credit card"],
+    });
+    const listedPasswords = await app.request(
+      "/api/v1/statement-passwords",
+      { headers: authed(session.cookie) },
+      env,
+    );
+    expect(JSON.stringify(await listedPasswords.json())).not.toContain(
+      "statement-pass",
+    );
 
-    const csv = "date,description,amount,currency,direction\n2026-11-02,Salary,5000.00,MYR,IN\n2026-11-03,Groceries,42.10,MYR,OUT\n";
+    const csv =
+      "date,description,amount,currency,direction\n2026-11-02,Salary,5000.00,MYR,IN\n2026-11-03,Groceries,42.10,MYR,OUT\n";
     vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0]) => {
       const url = String(input);
-      if (url.startsWith("https://oauth2.googleapis.com/token")) return Response.json({ access_token: "access-secret" });
-      if (url.includes("/attachments/att-1")) return Response.json({ data: Buffer.from(csv).toString("base64url") });
+      if (url.startsWith("https://oauth2.googleapis.com/token"))
+        return Response.json({ access_token: "access-secret" });
+      if (url.includes("/attachments/att-1"))
+        return Response.json({ data: Buffer.from(csv).toString("base64url") });
       if (url.includes("/messages/msg-1")) {
         return Response.json({
-          payload: { parts: [{ filename: "statement.csv", mimeType: "text/csv", body: { attachmentId: "att-1" } }] },
+          payload: {
+            parts: [
+              {
+                filename: "statement.csv",
+                mimeType: "text/csv",
+                body: { attachmentId: "att-1" },
+              },
+            ],
+          },
         });
       }
       throw new Error(`Unexpected fetch ${url}`);
     });
 
-    const read = await app.request("/api/v1/gmail/read", { method: "POST", headers: authed(session.cookie, session.csrfToken) }, env);
+    const read = await app.request(
+      "/api/v1/gmail/read",
+      { method: "POST", headers: authed(session.cookie, session.csrfToken) },
+      env,
+    );
     expect(read.status).toBe(200);
-    await expect(read.json()).resolves.toMatchObject({ checked: 1, statementsImported: 1, transactionsImported: 2, locked: 0 });
+    await expect(read.json()).resolves.toMatchObject({
+      checked: 1,
+      statementsImported: 1,
+      transactionsImported: 2,
+      locked: 0,
+    });
     const imported = await env.db.select().from(schema.transactions);
     expect(imported).toHaveLength(2);
-    expect(imported.every((row) => row.source === "STATEMENT" && row.status === "PENDING_REVIEW" && row.confidence === 60)).toBe(true);
+    expect(
+      imported.every(
+        (row) =>
+          row.source === "STATEMENT" &&
+          row.status === "PENDING_REVIEW" &&
+          row.confidence === 60,
+      ),
+    ).toBe(true);
     const stored = await env.db.select().from(schema.statements);
-    expect(stored[0]).toMatchObject({ status: "REVIEW_REQUIRED", errorCode: null, parserVersion: "csv-columns-v1" });
-    const sealedFile = readFileSync(join(storage, stored[0]?.storageKey ?? ""), "utf8");
+    expect(stored[0]).toMatchObject({
+      status: "REVIEW_REQUIRED",
+      errorCode: null,
+      parserVersion: "csv-columns-v1",
+    });
+    const sealedFile = readFileSync(
+      join(storage, stored[0]?.storageKey ?? ""),
+      "utf8",
+    );
     expect(sealedFile).not.toContain("statement-pass");
     expect(sealedFile).not.toContain("Salary");
 
-    await env.db.execute(sql`update sync_jobs set started_at = '2020-01-01T00:00:00.000Z'`);
-    const again = await app.request("/api/v1/gmail/read", { method: "POST", headers: authed(session.cookie, session.csrfToken) }, env);
+    await env.db.execute(
+      sql`update sync_jobs set started_at = '2020-01-01T00:00:00.000Z'`,
+    );
+    const again = await app.request(
+      "/api/v1/gmail/read",
+      { method: "POST", headers: authed(session.cookie, session.csrfToken) },
+      env,
+    );
     expect(again.status).toBe(200);
-    await expect(again.json()).resolves.toMatchObject({ checked: 0, transactionsImported: 0 });
+    await expect(again.json()).resolves.toMatchObject({
+      checked: 0,
+      transactionsImported: 0,
+    });
     expect(await env.db.select().from(schema.transactions)).toHaveLength(2);
+  });
+
+  it("sorts statement pages", async () => {
+    const env = await testEnv();
+    const session = await devLogin(env, "alex");
+    const now = new Date().toISOString();
+    await env.db.insert(schema.statements).values([
+      {
+        id: crypto.randomUUID(),
+        userId: session.user.id,
+        source: "GMAIL",
+        status: "DISCOVERED",
+        subject: "Alpha statement",
+        receivedOn: "2026-11-01",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: crypto.randomUUID(),
+        userId: session.user.id,
+        source: "GMAIL",
+        status: "DISCOVERED",
+        subject: "Zulu statement",
+        receivedOn: "2026-11-20",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    const bySubject = await app.request(
+      "/api/v1/statements?sort=subject&order=asc",
+      { headers: authed(session.cookie) },
+      env,
+    );
+    expect(bySubject.status).toBe(200);
+    const subjectBody = (await bySubject.json()) as { statements: { subject: string }[] };
+    expect(subjectBody.statements.map((row) => row.subject)).toEqual(["Alpha statement", "Zulu statement"]);
+    const byReceived = await app.request(
+      "/api/v1/statements?sort=receivedOn&order=desc",
+      { headers: authed(session.cookie) },
+      env,
+    );
+    const receivedBody = (await byReceived.json()) as { statements: { receivedOn: string }[] };
+    expect(receivedBody.statements.map((row) => row.receivedOn)).toEqual(["2026-11-20", "2026-11-01"]);
   });
 });

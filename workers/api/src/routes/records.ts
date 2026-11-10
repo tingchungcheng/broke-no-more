@@ -5,7 +5,13 @@ import type { AppEnv } from "../env";
 import { getEnv } from "../http/context";
 import { ApiError } from "../http/errors";
 import { requireMutationCsrf, requireUser } from "../middleware/guards";
-import { findStatement, listStatementsPage, listSyncJobs, STATEMENTS_PAGE_SIZE } from "../repositories/records";
+import {
+  findStatement,
+  listStatementsPage,
+  listSyncJobs,
+  STATEMENT_LIST_SORT_FIELDS,
+  STATEMENTS_PAGE_SIZE,
+} from "../repositories/records";
 import { requireUuid } from "./ids";
 
 const statementSchema = z.object({
@@ -64,11 +70,25 @@ const syncJobSchema = z.object({
 export const statementRoutes = new Hono<AppEnv>();
 statementRoutes.use("*", requireUser, requireMutationCsrf);
 
+const statementListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    sort: z.enum(STATEMENT_LIST_SORT_FIELDS).default("receivedOn"),
+    order: z.enum(["asc", "desc"]).default("desc"),
+  })
+  .strict();
+
 statementRoutes.get("/", async (c) => {
-  const pageParam = c.req.query("page");
-  const parsed = z.coerce.number().int().min(1).safeParse(pageParam ?? 1);
-  if (!parsed.success) throw new ApiError(400, "validation_error", "Page must be a positive number.");
-  const listed = await listStatementsPage(getEnv(c).db, c.get("userId"), parsed.data, STATEMENTS_PAGE_SIZE);
+  const parsed = statementListQuerySchema.safeParse({
+    page: c.req.query("page") ?? 1,
+    sort: c.req.query("sort"),
+    order: c.req.query("order"),
+  });
+  if (!parsed.success) throw new ApiError(400, "validation_error", "Request is invalid.");
+  const listed = await listStatementsPage(getEnv(c).db, c.get("userId"), parsed.data.page, STATEMENTS_PAGE_SIZE, {
+    sort: parsed.data.sort,
+    order: parsed.data.order,
+  });
   return c.json({
     statements: listed.rows.map((row) => presentStatement(row)),
     page: listed.page,
@@ -76,6 +96,8 @@ statementRoutes.get("/", async (c) => {
     total: listed.total,
     pageCount: listed.pageCount,
     hasMore: listed.hasMore,
+    sort: parsed.data.sort,
+    order: parsed.data.order,
   });
 });
 

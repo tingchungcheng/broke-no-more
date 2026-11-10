@@ -16,6 +16,6 @@ Phase 0 controls:
 Known gaps, left for later phases:
 
 - No rate limits yet.
-- A Gmail refresh token is sealed with AES-GCM before it is stored. The browser never receives it. A statement scan refreshes an access token on the server. Reading a saved statement downloads the PDF or CSV on the server, seals the file, and stores a statement password only after sealing it. The browser never receives the password, the file, or the token. Disconnect revokes the token and deletes the sealed token.
+- A Gmail refresh token is sealed with AES-GCM before it is stored. The browser never receives it. A statement scan refreshes an access token on the server. Reading a saved statement downloads the PDF or CSV on the server, seals the file, and stores a statement password only after sealing it. The password tried is the one whose saved phrase appears in the email subject. The browser never receives the password, the file, or the token. If the opened text is not a known table and an OpenAI key is set, that text is sent to OpenAI. The password and the Gmail token are not. Disconnect revokes the token and deletes the sealed token.
 - No full-workspace export or deletion yet. Account delete removes that account and its transactions.
 - Production should terminate TLS on the same origin as the API. The local app relies on the Vite proxy for that.

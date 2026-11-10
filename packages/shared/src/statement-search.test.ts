@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   messageIsStatement,
+  MAX_ACCOUNT_STATEMENT_KEYWORDS,
+  normalizeAccountStatementKeywords,
   normalizeStatementKeywords,
+  rankStatementAccounts,
   receivedOnInMalaysia,
   statementSearchQuery,
   validateStatementScanRange,
@@ -14,6 +17,29 @@ describe("statement keyword search", () => {
       "RYT",
       "Moomoo",
     ]);
+  });
+
+  it("caps account scan keywords", () => {
+    expect(MAX_ACCOUNT_STATEMENT_KEYWORDS).toBe(3);
+    expect(normalizeAccountStatementKeywords(["Hong Leong", "credit card", "HLB", "extra"])).toEqual([
+      "Hong Leong",
+      "credit card",
+      "HLB",
+    ]);
+  });
+
+  it("picks the account whose phrases appear in the email subject", () => {
+    const card = "card-account";
+    const savings = "savings-account";
+    const ranked = rankStatementAccounts("Your Hong Leong Credit Card e-Statement", [
+      { label: "Hong Leong", accountId: card },
+      { label: "credit card", accountId: card },
+      { label: "Hong Leong", accountId: savings },
+      { label: "savings", accountId: savings },
+    ]);
+    expect(ranked[0]).toMatchObject({ accountId: card, matchedLabels: ["Hong Leong", "credit card"] });
+    expect(ranked[1]).toMatchObject({ accountId: savings, matchedLabels: ["Hong Leong"] });
+    expect(rankStatementAccounts("Maybank e-Statement", [{ label: "Hong Leong", accountId: card }])).toEqual([]);
   });
 
   it("requires statement language in the Gmail query and quotes each keyword", () => {

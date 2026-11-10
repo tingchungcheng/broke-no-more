@@ -11,7 +11,7 @@ export type ParsedStatementTransaction = {
 };
 
 export type ParsedStatement = {
-  parserVersion: "csv-columns-v1" | "text-line-v1";
+  parserVersion: "csv-columns-v1" | "text-line-v1" | "openai-extract-v1";
   transactions: ParsedStatementTransaction[];
   warnings: string[];
 };

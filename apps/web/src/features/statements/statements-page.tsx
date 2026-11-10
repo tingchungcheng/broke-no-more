@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 
 type StatementRow = {
@@ -18,6 +19,9 @@ type StatementRow = {
   parserVersion?: string | null;
 };
 
+type StatementSort = "receivedOn" | "createdAt" | "subject" | "status" | "sender";
+type StatementOrder = "asc" | "desc";
+
 type StatementsResponse = {
   statements: StatementRow[];
   page: number;
@@ -25,14 +29,25 @@ type StatementsResponse = {
   total: number;
   pageCount: number;
   hasMore: boolean;
+  sort: StatementSort;
+  order: StatementOrder;
 };
 
+const SORT_FIELDS: { value: StatementSort; label: string }[] = [
+  { value: "receivedOn", label: "Received date" },
+  { value: "createdAt", label: "Date saved" },
+  { value: "subject", label: "Subject" },
+  { value: "status", label: "Status" },
+  { value: "sender", label: "Sender" },
+];
+
 const READ_ERRORS: Record<string, string> = {
-  password_required: "Locked. Save that keyword's password, then read again.",
-  password_rejected: "The saved password did not open this file.",
+  password_required: "Locked. Save the PDF password on Accounts → Edit, then read again.",
+  password_rejected: "The saved password did not open this file. Update it on Accounts → Edit.",
+  subject_unmatched: "Locked. Add a phrase from this email subject on the account, then read again.",
   no_attachment: "No PDF or CSV was attached.",
-  unrecognized_layout: "Opened, but this layout is not supported yet.",
-  account_required: "Choose an account for that keyword, then read again.",
+  unrecognized_layout: "Opened. The layout was not recognized, and OpenAI did not return rows.",
+  account_required: "Link the password to this account on Accounts → Edit, then read again.",
   currency_mismatch: "The amounts are not in the account currency.",
   read_failed: "This file could not be read.",
   unreadable: "This file could not be read.",
@@ -45,17 +60,34 @@ function statementLabel(statement: StatementRow): string {
   return statement.status;
 }
 
+function orderLabels(sort: StatementSort): { asc: string; desc: string } {
+  if (sort === "subject" || sort === "sender" || sort === "status") {
+    return { asc: "A–Z", desc: "Z–A" };
+  }
+  return { asc: "Oldest first", desc: "Newest first" };
+}
+
 export function StatementsPage() {
   const { api } = useAuth();
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<StatementSort>("receivedOn");
+  const [order, setOrder] = useState<StatementOrder>("desc");
   const statements = useQuery({
-    queryKey: ["statements", page],
-    queryFn: () => api<StatementsResponse>(`/statements?page=${page}`),
+    queryKey: ["statements", page, sort, order],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        sort,
+        order,
+      });
+      return api<StatementsResponse>(`/statements?${params.toString()}`);
+    },
   });
   const rows = statements.data?.statements ?? [];
   const total = statements.data?.total ?? 0;
   const pageCount = statements.data?.pageCount ?? 0;
   const currentPage = statements.data?.page ?? page;
+  const orderText = orderLabels(sort);
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -63,15 +95,54 @@ export function StatementsPage() {
       <h1 className="font-serif text-4xl">Found mail</h1>
       <Card>
         <p className="leading-relaxed">
-          A scan stores the email. Read statements, on the{" "}
+          A scan stores the email. Save a PDF password on{" "}
+          <Link className="text-moss" to="/accounts">
+            Accounts
+          </Link>
+          , then use <span className="text-ink">Read statements</span> on the{" "}
           <Link className="text-moss" to="/calendar">
             calendar
           </Link>
-          , downloads the PDF or CSV and adds transactions only when the layout is supported.
+          .
         </p>
         {total === 0 ? <p className="mt-3 text-sm text-muted">No statement emails saved yet.</p> : null}
         {total > 0 ? (
           <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="statements-sort">Sort by</Label>
+                <select
+                  id="statements-sort"
+                  className="h-11 w-full rounded-2xl border border-line bg-paper px-3 text-sm"
+                  value={sort}
+                  onChange={(event) => {
+                    setSort(event.target.value as StatementSort);
+                    setPage(1);
+                  }}
+                >
+                  {SORT_FIELDS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="statements-order">Order</Label>
+                <select
+                  id="statements-order"
+                  className="h-11 w-full rounded-2xl border border-line bg-paper px-3 text-sm"
+                  value={order}
+                  onChange={(event) => {
+                    setOrder(event.target.value as StatementOrder);
+                    setPage(1);
+                  }}
+                >
+                  <option value="desc">{orderText.desc}</option>
+                  <option value="asc">{orderText.asc}</option>
+                </select>
+              </div>
+            </div>
             <p className="mt-3 text-sm text-muted">
               Showing {(currentPage - 1) * 10 + 1}–{Math.min(currentPage * 10, total)} of {total}
             </p>

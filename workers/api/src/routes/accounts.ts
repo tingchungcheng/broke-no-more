@@ -6,7 +6,7 @@ import { getEnv } from "../http/context";
 import { ApiError } from "../http/errors";
 import { readJson } from "../http/json";
 import { requireMutationCsrf, requireUser } from "../middleware/guards";
-import { deleteAccount, findAccount, listAccounts } from "../repositories/accounts";
+import { deleteAccount, findAccount, listAccounts, updateAccount } from "../repositories/accounts";
 import { requireUuid } from "./ids";
 
 export const accountRoutes = new Hono<AppEnv>();
@@ -43,6 +43,25 @@ accountRoutes.get("/:id", async (c) => {
   const row = await findAccount(getEnv(c).db, c.get("userId"), id);
   if (!row) throw new ApiError(404, "account_not_found", "Account not found.");
   return c.json({ account: accountSchema.parse(row) });
+});
+
+accountRoutes.patch("/:id", async (c) => {
+  const id = requireUuid(c.req.param("id"));
+  const input = await readJson(c, createAccountSchema);
+  const db = getEnv(c).db;
+  const current = await findAccount(db, c.get("userId"), id);
+  if (!current) throw new ApiError(404, "account_not_found", "Account not found.");
+  const now = new Date().toISOString();
+  const row = {
+    type: input.type,
+    institution: input.institution ?? null,
+    displayName: input.displayName,
+    currency: input.currency,
+    maskedIdentifier: input.maskedIdentifier ? input.maskedIdentifier : null,
+    updatedAt: now,
+  };
+  await updateAccount(db, c.get("userId"), id, row);
+  return c.json({ account: accountSchema.parse({ ...current, ...row }) });
 });
 
 accountRoutes.delete("/:id", async (c) => {

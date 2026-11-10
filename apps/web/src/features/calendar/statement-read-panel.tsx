@@ -1,15 +1,11 @@
-import type { Account } from "@broke-no-more/shared";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { ApiClientError } from "@/lib/api";
-
-type SavedPassword = { id: string; label: string; accountId: string | null };
+import { ReadLoadingModal } from "./read-loading-modal";
 
 type ReadResult = {
   checked: number;
@@ -21,116 +17,61 @@ type ReadResult = {
   needsAccount: number;
 };
 
-export function StatementReadPanel({ keywords }: { keywords: string[] }) {
+function formatReadNotice(result: ReadResult): string {
+  const lines: string[] = [`Looked at ${result.checked} saved statement email${result.checked === 1 ? "" : "s"} (up to 20 per run).`];
+  if (result.locked > 0) {
+    lines.push(
+      `${result.locked} locked PDF${result.locked === 1 ? "" : "s"} could not be opened. On Accounts → Edit, add a phrase that appears in that email subject (for example Credit Card) and that account's PDF password, then read again. The calendar chip only finds the mail.`,
+    );
+  }
+  if (result.needsAccount > 0) {
+    lines.push(`${result.needsAccount} opened but need an account linked on that password.`);
+  }
+  if (result.unrecognized > 0) {
+    lines.push(
+      `${result.unrecognized} file${result.unrecognized === 1 ? "" : "s"} opened, but neither the table reader nor OpenAI returned rows to review.`,
+    );
+  }
+  if (result.statementsImported > 0 || result.transactionsImported > 0) {
+    lines.push(
+      `Imported ${result.transactionsImported} transaction${result.transactionsImported === 1 ? "" : "s"} from ${result.statementsImported} statement${result.statementsImported === 1 ? "" : "s"}.`,
+    );
+  } else if (result.filesStored > 0 && result.locked === 0) {
+    lines.push(`Stored ${result.filesStored} file${result.filesStored === 1 ? "" : "s"} for review.`);
+  }
+  if (result.checked > 0 && result.locked === 0 && result.filesStored === 0 && result.statementsImported === 0) {
+    lines.push("Nothing was imported. Common causes: no PDF/CSV attachment, or the email only contains a link.");
+  }
+  return lines.join(" ");
+}
+
+export function StatementReadPanel() {
   const { api, me } = useAuth();
   const queryClient = useQueryClient();
-  const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<{ accounts: Account[] }>("/accounts") });
-  const passwords = useQuery({
-    queryKey: ["statement-passwords"],
-    queryFn: () => api<{ passwords: SavedPassword[] }>("/statement-passwords"),
-  });
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [accountsByLabel, setAccountsByLabel] = useState<Record<string, string>>({});
-  const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  function savedFor(label: string) {
-    return passwords.data?.passwords.find((row) => row.label.toLowerCase() === label.toLowerCase());
-  }
 
   return (
     <Card>
       <h2 className="font-serif text-2xl">Read statements</h2>
       <p className="mt-2 text-sm leading-relaxed text-muted">
-        This downloads the PDF or CSV from a saved statement email and opens a locked PDF with the password you save for
-        that keyword. The password stays on the server. Transactions are added only when the file is a supported table,
-        and they stay in review.
+        This downloads the PDF or CSV from a saved statement email. A locked PDF is opened with the password whose
+        phrases appear in the email subject. Add those phrases and the password under{" "}
+        <span className="text-ink">Accounts → Edit</span>. A known table is imported directly. An unfamiliar layout is
+        sent to OpenAI only after the file is open. Imported rows stay in review.
       </p>
-      {keywords.length === 0 ? <p className="mt-4 text-sm text-muted">Select a keyword above before saving a password.</p> : null}
-      <div className="mt-4 space-y-4">
-        {keywords.map((keyword) => {
-          const saved = savedFor(keyword);
-          const accountId = accountsByLabel[keyword] ?? saved?.accountId ?? "";
-          return (
-            <form
-              key={keyword}
-              className="grid gap-3 rounded-2xl border border-line p-3 sm:grid-cols-[1fr_1fr_auto]"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const password = drafts[keyword]?.trim() ?? "";
-                if (!password) {
-                  setError(`Enter the ${keyword} statement password.`);
-                  return;
-                }
-                setPendingLabel(keyword);
-                setError(null);
-                void api("/statement-passwords", {
-                  method: "PUT",
-                  body: JSON.stringify({ label: keyword, password, accountId: accountId || null }),
-                })
-                  .then(async () => {
-                    setDrafts((current) => ({ ...current, [keyword]: "" }));
-                    setNotice(`${keyword} password saved.`);
-                    await queryClient.invalidateQueries({ queryKey: ["statement-passwords"] });
-                  })
-                  .catch((caught: unknown) => {
-                    setError(caught instanceof ApiClientError ? caught.message : "The password could not be saved.");
-                  })
-                  .finally(() => setPendingLabel(null));
-              }}
-            >
-              <div className="space-y-2 sm:col-span-1">
-                <Label htmlFor={`password-${keyword}`}>{keyword} password</Label>
-                <Input
-                  id={`password-${keyword}`}
-                  type="password"
-                  autoComplete="new-password"
-                  value={drafts[keyword] ?? ""}
-                  placeholder={saved ? "Saved. Enter a new one to replace it." : "Statement password"}
-                  onChange={(event) => setDrafts((current) => ({ ...current, [keyword]: event.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor={`account-${keyword}`}>Account</Label>
-                <select
-                  id={`account-${keyword}`}
-                  className="h-11 w-full rounded-2xl border border-line bg-paper px-3 text-sm"
-                  value={accountId}
-                  onChange={(event) => setAccountsByLabel((current) => ({ ...current, [keyword]: event.target.value }))}
-                >
-                  <option value="">Choose later</option>
-                  {(accounts.data?.accounts ?? []).map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.displayName} · {account.currency}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-end">
-                <Button type="submit" variant="secondary" disabled={pendingLabel === keyword}>
-                  {saved ? "Replace" : "Save"}
-                </Button>
-              </div>
-            </form>
-          );
-        })}
-      </div>
       <div className="mt-4">
         {me?.gmailConnected ? (
           <Button
             type="button"
-            disabled={reading}
             onClick={() => {
               setReading(true);
               setError(null);
               setNotice(null);
               void api<ReadResult>("/gmail/read", { method: "POST" })
                 .then(async (result) => {
-                  setNotice(
-                    `Checked ${result.checked}. Stored ${result.filesStored} files. Added ${result.transactionsImported} transactions from ${result.statementsImported} statements. ${result.locked} locked, ${result.unrecognized} unrecognized, ${result.needsAccount} need an account.`,
-                  );
+                  setNotice(formatReadNotice(result));
                   await queryClient.invalidateQueries({ queryKey: ["statements"] });
                   await queryClient.invalidateQueries({ queryKey: ["calendar"] });
                   await queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -141,7 +82,7 @@ export function StatementReadPanel({ keywords }: { keywords: string[] }) {
                 .finally(() => setReading(false));
             }}
           >
-            {reading ? "Reading…" : "Read saved statements"}
+            Read saved statements
           </Button>
         ) : (
           <Link to="/settings/connections" className="text-sm text-moss">
@@ -155,6 +96,7 @@ export function StatementReadPanel({ keywords }: { keywords: string[] }) {
           {error}
         </p>
       ) : null}
+      {reading ? <ReadLoadingModal /> : null}
     </Card>
   );
 }
