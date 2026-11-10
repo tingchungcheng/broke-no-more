@@ -23,6 +23,8 @@ export {
   TRANSACTION_STATUS_LABELS,
   TRANSACTION_TYPE_LABELS,
 } from "./labels";
+export { chartCurrencies, monthlyCashFlow, spendingByType } from "./cash-flow";
+export type { CashFlowRow, MonthlyCashFlow, SpendingSlice } from "./cash-flow";
 export { addMoney, formatMinor, minorExponent, MoneyError, parseDecimalToMinor, subtractMoney } from "./money";
 export type { Money } from "./money";
 export {

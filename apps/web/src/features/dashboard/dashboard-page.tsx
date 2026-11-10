@@ -5,13 +5,14 @@ import { Link } from "react-router-dom";
 import { MoneyText } from "@/components/money-text";
 import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
+import { CashFlowCharts } from "./cash-flow-charts";
 
 export function DashboardPage() {
   const { api, me } = useAuth();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: () => api<{ accounts: Account[] }>("/accounts") });
   const transactions = useQuery({
     queryKey: ["transactions"],
-    queryFn: () => api<{ transactions: Transaction[] }>("/transactions"),
+    queryFn: () => api<{ transactions: Transaction[]; truncated: boolean }>("/transactions"),
   });
 
   return (
@@ -45,6 +46,7 @@ export function DashboardPage() {
           </Link>
         </Card>
       </section>
+      <CashFlowCharts transactions={transactions.data?.transactions ?? []} truncated={transactions.data?.truncated ?? false} />
       {!me?.gmailConnected ? (
         <Card className="border-dashed">
           <p className="font-medium">Gmail is not connected</p>

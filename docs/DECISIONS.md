@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-11-10 — Charts use confirmed cash flow, not net worth
+
+Context: the overview had counts and a recent list, and net worth must stay uncalculated until statement balances exist.
+
+Decision: the dashboard charts confirmed income, expenses, refunds, investments, and other rows by currency. Transfers and repayments are omitted so they are not drawn as spending. Pending and excluded rows are omitted. Currencies are never added together.
+
+Consequences: a chart can appear from manual records. It is not a balance or a net-worth series.
+
 ## 2026-11-10 — Phase 0 only
 
 Context: the architecture says to implement one phase at a time and to start with Phase 0.
