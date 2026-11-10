@@ -26,11 +26,19 @@ export type ReadSavedResult = {
   statementsImported: number;
   transactionsImported: number;
   locked: number;
+  rejected: number;
   unrecognized: number;
   needsAccount: number;
 };
 
 type OpenedFile = { filename: string; text: string; bytes: Uint8Array };
+
+function readPriority(row: { status: string; errorCode: string | null }): number {
+  if (row.errorCode === "password_required" || row.errorCode === "password_rejected" || row.errorCode === "subject_unmatched") return 0;
+  if (row.status === "DISCOVERED") return 1;
+  if (row.errorCode === "unrecognized_layout") return 2;
+  return 3;
+}
 
 async function openAttachment(
   bytes: Uint8Array,
@@ -48,12 +56,14 @@ async function openAttachment(
   if (unlocked.error !== "password_required") return unlocked;
   if (passwords.length === 0) return { ok: false, error: "password_required" };
   let rejected = false;
+  let fallback: "password_required" | "unreadable" = "password_required";
   for (const password of passwords) {
     const attempt = await extractPdfText(bytes, password);
     if (attempt.ok) return { ok: true, text: attempt.text, password };
     if (attempt.error === "password_rejected") rejected = true;
+    else if (attempt.error === "unreadable") fallback = "unreadable";
   }
-  return { ok: false, error: rejected ? "password_rejected" : "password_required" };
+  return { ok: false, error: rejected ? "password_rejected" : fallback };
 }
 
 export async function readSavedStatements(env: Env, userId: string, accessToken: string): Promise<ReadSavedResult> {
@@ -64,6 +74,7 @@ export async function readSavedStatements(env: Env, userId: string, accessToken:
     statementsImported: 0,
     transactionsImported: 0,
     locked: 0,
+    rejected: 0,
     unrecognized: 0,
     needsAccount: 0,
   };
@@ -80,7 +91,10 @@ export async function readSavedStatements(env: Env, userId: string, accessToken:
       ),
     )
     .limit(40);
-  const pending = rows.filter((row) => row.status === "DISCOVERED" || (row.errorCode != null && RETRY_ERRORS.includes(row.errorCode))).slice(0, 20);
+  const pending = rows
+    .filter((row) => row.status === "DISCOVERED" || (row.errorCode != null && RETRY_ERRORS.includes(row.errorCode)))
+    .sort((left, right) => readPriority(left) - readPriority(right) || (right.receivedOn ?? "").localeCompare(left.receivedOn ?? ""))
+    .slice(0, 20);
   const presets = await db.select().from(statementPasswords).where(eq(statementPasswords.userId, userId));
   const openedPresets = await Promise.all(
     presets.map(async (preset) => ({
@@ -157,7 +171,8 @@ export async function readSavedStatements(env: Env, userId: string, accessToken:
       } else if (lock === "password_required" || lock === "password_rejected") {
         const errorCode = lock === "password_required" && openedPresets.length > 0 && ranked.length === 0 ? "subject_unmatched" : lock;
         await mark(env, statement.id, { status: "REVIEW_REQUIRED", errorCode });
-        result.locked += 1;
+        if (errorCode === "password_rejected") result.rejected += 1;
+        else result.locked += 1;
       } else {
         await mark(env, statement.id, { status: "FAILED", errorCode: lock ?? "read_failed" });
       }

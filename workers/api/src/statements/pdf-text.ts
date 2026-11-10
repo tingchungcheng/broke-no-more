@@ -5,10 +5,11 @@ export async function extractPdfText(
   password?: string,
 ): Promise<{ ok: true; text: string } | { ok: false; error: "password_required" | "password_rejected" | "unreadable" }> {
   try {
-    const pdfjs = await import("pdfjs-dist/build/pdf.mjs");
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const data = new Uint8Array(bytes);
     const document = await pdfjs
       .getDocument({
-        data: bytes,
+        data,
         password,
         verbosity: pdfjs.VerbosityLevel?.ERRORS ?? 0,
         isEvalSupported: false,
@@ -33,7 +34,8 @@ export async function extractPdfText(
       }
       if (line.trim()) lines.push(line.trim());
     }
-    await document.destroy();
+    if (typeof document.destroy === "function") await document.destroy();
+    else await document.cleanup?.();
     return { ok: true, text: lines.join("\n") };
   } catch (error) {
     const name = error instanceof Error ? error.name : "";

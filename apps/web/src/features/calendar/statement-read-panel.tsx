@@ -13,12 +13,19 @@ type ReadResult = {
   statementsImported: number;
   transactionsImported: number;
   locked: number;
+  rejected?: number;
   unrecognized: number;
   needsAccount: number;
 };
 
 function formatReadNotice(result: ReadResult): string {
   const lines: string[] = [`Looked at ${result.checked} saved statement email${result.checked === 1 ? "" : "s"} (up to 20 per run).`];
+  if ((result.rejected ?? 0) > 0) {
+    const count = result.rejected ?? 0;
+    lines.push(
+      `${count} PDF${count === 1 ? "" : "s"} matched an account, but the saved PDF password did not open ${count === 1 ? "it" : "them"}. Update that password on Accounts → Edit, then read again.`,
+    );
+  }
   if (result.locked > 0) {
     lines.push(
       `${result.locked} locked PDF${result.locked === 1 ? "" : "s"} could not be opened. On Accounts → Edit, add a phrase that appears in that email subject (for example Credit Card) and that account's PDF password, then read again. The calendar chip only finds the mail.`,

@@ -1,7 +1,12 @@
-declare module "pdfjs-dist/build/pdf.mjs" {
+declare module "pdfjs-dist/legacy/build/pdf.mjs" {
   type PdfTextItem = { str?: string; transform?: number[] };
   type PdfPage = { getTextContent: () => Promise<{ items: PdfTextItem[] }> };
-  type PdfDocument = { numPages: number; getPage: (page: number) => Promise<PdfPage>; destroy: () => Promise<void> };
+  type PdfDocument = {
+    numPages: number;
+    getPage: (page: number) => Promise<PdfPage>;
+    destroy?: () => Promise<void>;
+    cleanup?: () => Promise<void>;
+  };
 
   export function getDocument(params: {
     data: Uint8Array;
